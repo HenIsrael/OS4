@@ -27,10 +27,14 @@ void* List::insert_block(size_t size)
 {
     if(!head)
     {
-        MallocMetadata block_data = MallocMetadata(size + sizeof(MallocMetadata));
+        MallocMetadata block_data = MallocMetadata(size);
         head = &block_data;
         tail = head;
-        block_data.start_address = sbrk(size + sizeof(MallocMetadata));
+        if(sbrk(sizeof(MallocMetadata))== (void*)-1)
+        {
+            return NULL;
+        }
+        block_data.start_address = sbrk(size);
         if (block_data.start_address == (void*)-1)
         {
             return NULL;
@@ -44,13 +48,17 @@ void* List::insert_block(size_t size)
             if(runner->is_free && runner->size>=size)
             {
                 runner->is_free = false;
-                return runner->start_address+sizeof(MallocMetadata);
+                return runner->start_address;
             }
             runner = runner->next;
         }
         if (runner == tail)
         {
-            MallocMetadata block_data = MallocMetadata(size + sizeof(MallocMetadata));
+            MallocMetadata block_data = MallocMetadata(size);
+            if(sbrk(sizeof(MallocMetadata))== (void*)-1)
+            {
+                return NULL;
+            }
             block_data.start_address = sbrk(size);
             if (block_data.start_address == (void*)-1)
             {
@@ -59,7 +67,7 @@ void* List::insert_block(size_t size)
             block_data.prev = tail;
             tail->next = &block_data;
             tail = &block_data;
-            return block_data.start_address+sizeof(MallocMetadata);
+            return block_data.start_address;
         }
     }
 }
