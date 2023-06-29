@@ -132,22 +132,78 @@ void List::free_space(void* address){
 }
 
 size_t List::get_num_free_blocks(){
+    if(!head){
+        return 0;
+    }
 
+    size_t sum_of_free_blocks = 0;
+    MallocMetadata *runner = head;
+    while(runner){
+        if(runner->is_free==true){
+            sum_of_free_blocks++;
+        }
+        runner = runner->next;
+    }
+
+    return sum_of_free_blocks;
 }
+
 size_t List::get_num_free_bytes(){
+    if(!head){
+        return 0;
+    }
+
+    size_t sum_of_free_bytes = 0;
+    MallocMetadata *runner = head;
+    while(runner){
+        if(runner->is_free==true){
+            sum_of_free_bytes += runner->size;
+        }
+        runner = runner->next;
+    }
+
+    return sum_of_free_bytes;
 
 }
+
 size_t List::get_num_allocated_blocks(){
+    if(!head){
+        return 0;
+    }
 
+    size_t sum_of_allocated_blocks = 0;
+    MallocMetadata *runner = head;
+    while(runner){
+        sum_of_allocated_blocks++;
+        runner = runner->next;
+    }
+
+    return sum_of_allocated_blocks;
 }
+
 size_t List::get_num_allocated_bytes(){
+    if(!head){
+        return 0;
+    }
 
+    size_t sum_of_allocated_bytes = 0;
+    MallocMetadata *runner = head;
+    while(runner){
+        sum_of_allocated_bytes += runner->size;
+        runner = runner->next;
+    }
+
+    return sum_of_allocated_bytes;
 }
+
 size_t List::get_num_metadata_bytes(){
 
+    //check if needed our list metadata
+    return get_num_allocated_blocks()*sizeof(MallocMetadata);
 }
-size_t List::get_size_metadata(){
 
+size_t List::get_size_metadata(){
+    return sizeof(MallocMetadata);
 }
 
 size_t List::get_block_size(void* address){
