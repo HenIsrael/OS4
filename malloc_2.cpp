@@ -1,4 +1,5 @@
 #include <unistd.h>
+#include <cstring>
 
 #define MAX_ALLOCATE 100000000
 
