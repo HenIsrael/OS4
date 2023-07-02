@@ -2,6 +2,8 @@
 #include <cstring>
 #include <cstdint>
 #include <cmath>
+#include <cstdio>
+#include <sys/mman.h>
 
 #define MAX_ALLOCATE (1e8)
 #define MAX_ORDER (10)
@@ -82,7 +84,13 @@ static void* find_buddy(MallocMetadata *block){
 
 static void initialize_free_space(){
 
-    void * addr = sbrk((intptr_t)32*BLOCK_SIZE);
+    uintptr_t current_pb = (uintptr_t)sbrk(0);
+
+    uintptr_t addr_for_block = (uintptr_t)sbrk((intptr_t)32*BLOCK_SIZE);
+
+    uintptr_t addr_for_block = (uintptr_t)sbrk((intptr_t)32*BLOCK_SIZE);
+
+    uintptr_t addr = addr_for_block + current_pb ;
 
     for(int i=0; i<32; i++){
 
@@ -177,15 +185,66 @@ static void* find_minimal_space(size_t size){
 }
 
 MallocMetadata* remove_block_from_bin(int order){
-
+    if(!bins[order]){
+        //no blocks
+        std::printf("somthing wrong in remove block from bin");
+        //return nullptr;
+    }
+    if(!bins[order]->next){
+        //one block
+        MallocMetadata* tmp = bins[order];
+        bins[order]=nullptr;
+        return tmp;
+    }
+    //more then one
+    MallocMetadata* tmp = bins[order];
+    bins[order] =  bins[order]->next;
+    bins[order]->prev = nullptr;
+    return tmp;
 }
 
 void insert_block_to_bin(MallocMetadata* place, int order){
+    MallocMetadata* runner = bins[order];
+    if (!runner)
+    {
+        bins[order]= place;
+        bins[order]->prev = nullptr;
+        bins[order]->next = nullptr;
+        return;
+    }
+    
+    MallocMetadata* runner_prev;
+    while (runner)
+    {
+        runner_prev = runner->prev;
+        if((uintptr_t)place < (uintptr_t)runner)
+        {
+            //MallocMetadata* tmp = runner->prev;
+            runner_prev->next = place;
+            runner->prev = place;
+            place->next = runner;
+            place->prev = runner_prev;
+            return;
+        }
 
+        runner= runner->next;
+
+    }
+
+    //insert to tale
+    runner_prev->next = place;
+    place->prev = runner_prev;
+    place->next = nullptr;
 }
 
 size_t check_max_free_space(){
-
+    for (int i = MAX_ORDER; i >= 0 ; i--)
+    {
+        if(bins[i]){
+            return 128*pow(2, i)-meta_data_size;
+        }
+    }
+    return 0 ;
 }
 
 // -------------------- Better Malloc Implementation  -------------------- // 
@@ -204,7 +263,7 @@ void* smalloc(size_t size){
     if(size < MMAP_THRESHOLD){
         if(check_max_free_space() >= size){
             void* place = find_minimal_space(size);
-            return place;
+            return place+meta_data_size;
         }
         else {
             // there is not enough free space that can holds size
@@ -214,10 +273,25 @@ void* smalloc(size_t size){
         }
     }
 
-    else{ // size >= MMAP_THRESHOLD
+    else{ 
+        // size >= MMAP_THRESHOLD
+        void *big_block_addr = mmap(NULL, (size + meta_data_size), PROT_WRITE | PROT_READ, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+        if (big_block_addr == (void *)-1)
+        {
+            return nullptr;
+        }
+        MallocMetadata* big_block = (MallocMetadata *)big_block_addr;
+        big_block->is_free = false;
+        big_block->next = nullptr;
+        big_block->prev = nullptr; 
+        //big_block->cookie = ?;
 
-    // do mmap
+        total_allocated_blocks++;
+        total_allocated_bytes += size ; 
+        //check about that
 
+        return big_block_addr+meta_data_size;
+        
     }
 }
 
@@ -228,6 +302,46 @@ void *scalloc(size_t num, size_t size) {
 }
 
 void sfree(void *p) {
+    if (!p){
+        return;
+    }
+
+    MallocMetadata* block_let_it_go = (MallocMetadata*)((uintptr_t)p - (uintptr_t)meta_data_size);
+    if( block_let_it_go->is_free ){
+        return;
+    }
+
+    if (block_let_it_go->size >= MMAP_THRESHOLD)
+    {
+        //big block munmmp
+    }
+    else
+    {
+        /*
+
+        insert( block let it go);
+        block_let_it_go->is_free = true;
+
+        while ( buddy)
+        {
+            merged block = merge (let it go , buddies );
+            new_remove( merged block, order );
+            insert(merged block , order+1);
+            buddy = merged block;
+        }
+        
+        
+        
+        
+        
+        */
+
+
+        block_let_it_go->is_free = true;
+
+
+    }
+    
     
 }
 
