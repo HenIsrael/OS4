@@ -127,7 +127,7 @@ static void* initialize_free_space(){
 
     for(int i=1; i<INITIAL_BLOCKS_NUM; i++){
 
-        MallocMetadata *new_block = (MallocMetadata*)(uintptr_t)addr + MAX_BLOCK_SIZE*i;
+        MallocMetadata *new_block = (MallocMetadata*)((uintptr_t)addr + MAX_BLOCK_SIZE*i);
 
         new_block->prev = curr;
         new_block->next = nullptr;
