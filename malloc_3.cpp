@@ -1,27 +1,26 @@
 #include <unistd.h>
 #include <cstring>
 #include <cstdint>
+#include <sys/mman.h>
 #include <cmath>
 #include <cstdio>
-#include <sys/mman.h>
+#include <iostream>
+
 
 #define MAX_ALLOCATE (1e8)
 #define MAX_ORDER (10)
 #define KB (1024)
-#define MMAP_THRESHOLD (128*KB)
-#define BLOCK_SIZE (128*KB)
+#define MIN_BLOCK_SIZE (128)
+#define MAX_BLOCK_SIZE (128*KB)
+#define INITIAL_BLOCKS_NUM (32)
+#define FREE_SPACE_CHUNK (MAX_BLOCK_SIZE*INITIAL_BLOCKS_NUM)
 
 struct MallocMetadata {
+    int sweet_cookie;
     size_t size;
     bool is_free;
     MallocMetadata* next;
     MallocMetadata* prev;
-    int cookie; // challenge 4
-    /**
-     * \todo:
-     * think about adding more fields
-     * validate size of struct not bigger then 64 bytes(IMPORTENT!!!)
-    */
 };
 
 // -------------------- Data structure global  -------------------- // 
@@ -30,35 +29,31 @@ struct MallocMetadata {
 static size_t meta_data_size = sizeof(MallocMetadata);
 static size_t total_free_blocks = 0;
 static size_t total_allocated_blocks = 0;
-static size_t total_big_blocks = 0; // increase when using mmap()
-static size_t total_blocks = total_free_blocks + total_allocated_blocks + total_big_blocks;
+static size_t total_meta_data_bytes = 0;
 static size_t total_allocated_bytes = 0;
 static bool first_smalloc = true;
-
-//static size_t total_free_bytes_with_meta = 0;
-//static size_t total_free_bytes = 0; // = total_free_bytes_with_meta - (total_free_blocks*meta_data_size)
 
 MallocMetadata *bins[MAX_ORDER+1] = {nullptr};
 //////////////////////////////////////////////
 
 // Functions declerations
-static void initialize_free_space();
+static void* first_alignment_blocks();
+static void* initialize_free_space();
 static size_t total_free_bytes();
 static size_t check_max_free_space();
 static void* find_minimal_space(size_t size);
 static void* split_blocks(int order,size_t size);
-static void* find_buddy(MallocMetadata *block);
+static MallocMetadata* merge_buddies(MallocMetadata *buddy1, MallocMetadata *buddy2);
+static MallocMetadata* find_buddy(MallocMetadata *block);
 static MallocMetadata* remove_block_from_bin(int order);
+static void remove_block_from_bin(MallocMetadata* block);
 static void insert_block_to_bin(MallocMetadata* place, int order);
-
-
-/////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////
 
 // Implementation part
-size_t total_free_bytes(){
+static size_t total_free_bytes(){
 
     size_t total_free_bytes_with_meta = 0;
-
     for (int order = 0; order < MAX_ORDER+1; order++){
 
         MallocMetadata *current = bins[order];
@@ -66,66 +61,72 @@ size_t total_free_bytes(){
 
         while (!current) orderi_free_count ++, current = current->next;
         
-        total_free_bytes_with_meta += orderi_free_count*128*pow(2,order);
+        total_free_bytes_with_meta += orderi_free_count*MIN_BLOCK_SIZE*pow(2,order);
     }
 
     return total_free_bytes_with_meta - (total_free_blocks*meta_data_size);
 }
-/////////////////////////////////////////////
+static void* first_alignment_blocks(){
 
-static void* find_buddy(MallocMetadata *block){
-    
-    if(!block->is_free){
+    void *curr_prog_break = sbrk(0);
+    if(curr_prog_break == (void*)(-1)){
         return nullptr;
     }
 
-    return (void*)((uintptr_t)block ^ block->size); 
+    intptr_t allign = FREE_SPACE_CHUNK + MAX_BLOCK_SIZE - (intptr_t)curr_prog_break%MAX_BLOCK_SIZE;
+    void *addr_after_aligment = sbrk(allign);
+    if(addr_after_aligment == (void*)(-1)){
+        return nullptr;
+    }
+
+    return addr_after_aligment;
 }
 
-static void initialize_free_space(){
+static void* initialize_free_space(){
 
-    uintptr_t current_pb = (uintptr_t)sbrk(0);
+    if (!first_alignment_blocks()){
+        return nullptr;
+    }
+    
+    void *addr = sbrk((intptr_t)FREE_SPACE_CHUNK);
+    if(addr == (void*)(-1)){
+        return nullptr;
+    }
 
-    uintptr_t addr_for_block = (uintptr_t)sbrk((intptr_t)32*BLOCK_SIZE);
+    for(int i=0; i<INITIAL_BLOCKS_NUM; i++){
 
-    uintptr_t addr_for_block = (uintptr_t)sbrk((intptr_t)32*BLOCK_SIZE);
-
-    uintptr_t addr = addr_for_block + current_pb ;
-
-    for(int i=0; i<32; i++){
-
-        MallocMetadata *new_block = (MallocMetadata*)(intptr_t)addr + BLOCK_SIZE*i;
-        if (i==31)
-        {
+        MallocMetadata *new_block = (MallocMetadata*)(intptr_t)addr + MAX_BLOCK_SIZE*i;
+        if (i == INITIAL_BLOCKS_NUM -1){ // special case for last block
             new_block->next = nullptr;
         }
+
         else{
-            new_block->next = (MallocMetadata*)(intptr_t)addr + BLOCK_SIZE*(i+1);
+            new_block->next = (MallocMetadata*)(intptr_t)addr + MAX_BLOCK_SIZE*(i+1);
         }
 
-        if(i==0){
+        if(i==0){ // special case for first clock
             new_block->prev = nullptr;
         }
         else{
-            new_block->prev = (MallocMetadata*)(intptr_t)addr + BLOCK_SIZE*(i-1);
+            new_block->prev = (MallocMetadata*)(intptr_t)addr + MAX_BLOCK_SIZE*(i-1);
         }
 
         new_block->is_free = true;
-        new_block->size = BLOCK_SIZE - meta_data_size;
-        
-        /**
-         * \todo : new_block->cookie?
-        */
-        
+        new_block->size = MAX_BLOCK_SIZE - meta_data_size;
+        new_block->sweet_cookie = std::rand();
     }
 
-    total_free_blocks += 32;
+    total_free_blocks += INITIAL_BLOCKS_NUM;
+    total_meta_data_bytes += INITIAL_BLOCKS_NUM*meta_data_size;
+    //TODO : add more
     first_smalloc = false; 
+    return addr;
 }
+
 static void* split_blocks(int order,size_t size){
 
     int min_order = MAX_ORDER;
-    while(size <= ((128*pow(2,min_order))-meta_data_size) && min_order>=0){
+    while(size <= ((MIN_BLOCK_SIZE*pow(2,min_order))-meta_data_size) && min_order>=0){
         min_order -=1;
     }
     min_order++;
@@ -139,6 +140,7 @@ static void* split_blocks(int order,size_t size){
         total_free_blocks--;
         total_allocated_blocks++;
         total_allocated_bytes+=size;
+        total_meta_data_bytes+=meta_data_size;
         //block_to_remove->cookie?
 
         return (void*)block_to_remove;
@@ -148,11 +150,19 @@ static void* split_blocks(int order,size_t size){
         for (int i = order; i > min_order; i--){
             void * addr_to_split = (void*)remove_block_from_bin(order);
             MallocMetadata* buddy1 =  (MallocMetadata*)addr_to_split;
-            uintptr_t buddy2_start_addr =  (uintptr_t)buddy1 + 128*pow(2,order-1);
+            uintptr_t buddy2_start_addr =  (uintptr_t)buddy1 + MIN_BLOCK_SIZE*pow(2,order-1);
             MallocMetadata* buddy2 = (MallocMetadata*)buddy2_start_addr;
             insert_block_to_bin(buddy1, order-1);
             insert_block_to_bin(buddy2, order-1);
             total_free_blocks++; // we remove one but added two buddies
+
+            // TODO: hen added check
+            buddy1->is_free = true;
+            buddy1->sweet_cookie = std::rand();
+
+            buddy2->is_free = true;
+            buddy2->sweet_cookie = std::rand();
+            total_meta_data_bytes += 2*meta_data_size;
         }
 
         // finally remove the right free space and malloc
@@ -169,12 +179,48 @@ static void* split_blocks(int order,size_t size){
     
 }
 
+static MallocMetadata* find_buddy(MallocMetadata *block){
+    
+    if(!block->is_free){
+        return nullptr;
+    }
+
+    void *potential_buddy_addr = (void*)((uintptr_t)block ^ block->size);
+
+    // check existence for buddy
+    for(int order=0; order<MAX_ORDER+1; order++){
+
+        MallocMetadata *current = bins[order]; 
+        while (current)
+        {
+            if(current == potential_buddy_addr){
+                return current; // yes buddy :)
+            }
+            current = current->next;
+        }
+    
+    }
+
+    return nullptr; // no buddy :(
+}
+
+static MallocMetadata * merge_buddies(MallocMetadata *buddy1, MallocMetadata *buddy2){
+
+    MallocMetadata *big_monster = (MallocMetadata*) (std::min((uintptr_t)buddy1, (uintptr_t)buddy2));
+    big_monster->size = buddy1->size + buddy2->size;
+    big_monster->sweet_cookie = std::rand();
+    big_monster->next = nullptr;
+    big_monster->prev = nullptr;
+
+    return big_monster;
+}
+
 static void* find_minimal_space(size_t size){
 
     for (int order=0; order<MAX_ORDER+1; order++){
         if(bins[order]){
             //case there is free blocks in order i
-            if((128*pow(2,order)-meta_data_size) >= size){
+            if((MIN_BLOCK_SIZE*pow(2,order)-meta_data_size) >= size){
                 // case size order good enough
                 return split_blocks(order,size);
             }
@@ -184,7 +230,7 @@ static void* find_minimal_space(size_t size){
     return (void*)-1; // for bugging erase after
 }
 
-MallocMetadata* remove_block_from_bin(int order){
+static MallocMetadata* remove_block_from_bin(int order){
     if(!bins[order]){
         //no blocks
         std::printf("somthing wrong in remove block from bin");
@@ -203,7 +249,11 @@ MallocMetadata* remove_block_from_bin(int order){
     return tmp;
 }
 
-void insert_block_to_bin(MallocMetadata* place, int order){
+static void remove_block_from_bin(MallocMetadata* block){
+
+}
+
+static void insert_block_to_bin(MallocMetadata* place, int order){
     MallocMetadata* runner = bins[order];
     if (!runner)
     {
@@ -231,17 +281,17 @@ void insert_block_to_bin(MallocMetadata* place, int order){
 
     }
 
-    //insert to tale
+    //insert to tail
     runner_prev->next = place;
     place->prev = runner_prev;
     place->next = nullptr;
 }
 
-size_t check_max_free_space(){
+static size_t check_max_free_space(){
     for (int i = MAX_ORDER; i >= 0 ; i--)
     {
         if(bins[i]){
-            return 128*pow(2, i)-meta_data_size;
+            return MIN_BLOCK_SIZE*pow(2, i)-meta_data_size;
         }
     }
     return 0 ;
@@ -257,11 +307,14 @@ void* smalloc(size_t size){
     }
 
     if(first_smalloc){
-        initialize_free_space();
+        if(!initialize_free_space()){
+            return nullptr;
+        }
     }
 
-    if(size < MMAP_THRESHOLD){
+    if(size < MAX_BLOCK_SIZE){
         if(check_max_free_space() >= size){
+
             void* place = find_minimal_space(size);
             return place+meta_data_size;
         }
@@ -273,8 +326,8 @@ void* smalloc(size_t size){
         }
     }
 
-    else{ 
-        // size >= MMAP_THRESHOLD
+    else{ // size >= MMAP_THRESHOLD
+        
         void *big_block_addr = mmap(NULL, (size + meta_data_size), PROT_WRITE | PROT_READ, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
         if (big_block_addr == (void *)-1)
         {
@@ -282,13 +335,14 @@ void* smalloc(size_t size){
         }
         MallocMetadata* big_block = (MallocMetadata *)big_block_addr;
         big_block->is_free = false;
+        big_block->sweet_cookie = std::rand();
         big_block->next = nullptr;
         big_block->prev = nullptr; 
-        //big_block->cookie = ?;
+
 
         total_allocated_blocks++;
-        total_allocated_bytes += size ; 
-        //check about that
+        total_allocated_bytes += size; 
+        total_meta_data_bytes += meta_data_size;
 
         return big_block_addr+meta_data_size;
         
@@ -298,6 +352,14 @@ void* smalloc(size_t size){
 
 void *scalloc(size_t num, size_t size) {
 
+    size_t bytes = num * size;
+    void *return_addr = smalloc(bytes);
+    if(!return_addr){
+        return nullptr;
+    }
+
+    memset(return_addr,0,bytes);
+    return return_addr;
 
 }
 
@@ -307,16 +369,38 @@ void sfree(void *p) {
     }
 
     MallocMetadata* block_let_it_go = (MallocMetadata*)((uintptr_t)p - (uintptr_t)meta_data_size);
-    if( block_let_it_go->is_free ){
+    if(block_let_it_go->is_free){
         return;
     }
 
-    if (block_let_it_go->size >= MMAP_THRESHOLD)
+    if (block_let_it_go->size >= MAX_BLOCK_SIZE)
     {
-        //big block munmmp
+        total_allocated_blocks --;
+        total_allocated_bytes -= block_let_it_go->size;
+        total_meta_data_bytes -= meta_data_size;
+
+        munmap(block_let_it_go, block_let_it_go->size + meta_data_size);
+        return;
     }
-    else
-    {
+    else{// add free block(s) to “buddy memory”
+
+        int order = log2((block_let_it_go->size + meta_data_size)/MIN_BLOCK_SIZE);
+        insert_block_to_bin(block_let_it_go, order); 
+        block_let_it_go->is_free = true;
+        //TODO : add global
+
+        MallocMetadata *buddy = find_buddy(block_let_it_go);
+        while(buddy && order <= MAX_ORDER-1){
+            MallocMetadata *merged_block = merge_buddies(block_let_it_go, buddy);
+            remove_block_from_bin(block_let_it_go);
+            remove_block_from_bin(buddy);
+            insert_block_to_bin(merged_block, order+1);
+            buddy = merged_block;
+
+            //TODO : add global
+        }
+
+
         /*
 
         insert( block let it go);
@@ -335,9 +419,6 @@ void sfree(void *p) {
         
         
         */
-
-
-        block_let_it_go->is_free = true;
 
 
     }
@@ -375,7 +456,7 @@ size_t _num_allocated_bytes()
 
 size_t _num_meta_data_bytes()
 {
-    return _size_meta_data() * _num_allocated_blocks();
+    return total_meta_data_bytes;
 }
 
 size_t _size_meta_data()
