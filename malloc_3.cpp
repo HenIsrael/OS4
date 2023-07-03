@@ -102,41 +102,71 @@ static void* initialize_free_space(){
         return nullptr;
     }
     
-    void *addr = sbrk(1024*128*32);//((intptr_t)FREE_SPACE_CHUNK);
+    void *addr = sbrk((intptr_t)FREE_SPACE_CHUNK);//((intptr_t)FREE_SPACE_CHUNK);
     if(addr == (void*)(-1)){
         return nullptr;
     }
 
-    for(int i=0; i<INITIAL_BLOCKS_NUM; i++){
+    // insert first block
+    
+    MallocMetadata *first = (MallocMetadata*)(uintptr_t)addr;
+    first->prev = nullptr;
+    first->next = nullptr;
+    first->is_free = true;
+    first->size = MAX_BLOCK_SIZE - meta_data_size;
+    first->sweet_cookie = cookie_recipe;
+    bins[10] = first;
 
-        MallocMetadata *new_block = (MallocMetadata*)(intptr_t)addr + MAX_BLOCK_SIZE*i;
+    std::cout << 0 << std::endl;
+    std::cout << "new_block : " << first  << std::endl;
+    std::cout << "prev      : " << first->prev << std::endl;
+    std::cout << "next      : " << first->next << std::endl;
 
+    MallocMetadata *curr = first;
+    
 
-        if (i == INITIAL_BLOCKS_NUM -1){ // special case for last block
-            new_block->next = nullptr;
-        }
+    for(int i=1; i<INITIAL_BLOCKS_NUM; i++){
 
-        else{
-            printf ("before check \n"); 
-            std::cout << i << std::endl;
-            uintptr_t offset = MAX_BLOCK_SIZE*(i+1);
-            void * nxt_adrr = (void *)((uintptr_t)addr + offset);
-            std::cout << nxt_adrr << std::endl;
-            new_block->next = (MallocMetadata*)nxt_adrr;
-            std::cout << new_block->next << std::endl;
-            printf ("after check \n"); 
-        }
+        MallocMetadata *new_block = (MallocMetadata*)(uintptr_t)addr + MAX_BLOCK_SIZE*i;
 
-        if(i==0){ // special case for first clock
-            new_block->prev = nullptr;
-        }
-        else{
-            new_block->prev = (MallocMetadata*)(intptr_t)addr + MAX_BLOCK_SIZE*(i-1);
-        }
+        new_block->prev = curr;
+        new_block->next = nullptr;
+        curr->next = new_block;
 
         new_block->is_free = true;
         new_block->size = MAX_BLOCK_SIZE - meta_data_size;
         new_block->sweet_cookie = cookie_recipe;
+
+        curr = new_block;
+
+
+        // if (i == INITIAL_BLOCKS_NUM -1){ // special case for last block
+        //     new_block->next = nullptr;
+        //     size_t prev_offset = MAX_BLOCK_SIZE*(INITIAL_BLOCKS_NUM-2);
+        //     new_block->prev = (MallocMetadata*)((uintptr_t)addr + prev_offset);
+        // }
+
+        // else if (i==0){ // special case for first block
+        //     new_block->prev = nullptr;
+        //     size_t next_offset = MAX_BLOCK_SIZE;
+        //     new_block->next = (MallocMetadata*)((uintptr_t)addr + next_offset);
+        //     bins[10] = new_block;
+        // }
+
+        // else{ // all other blocks
+        //     size_t prev_offset = MAX_BLOCK_SIZE*(i-1);
+        //     size_t next_offset = MAX_BLOCK_SIZE*(i+1);
+
+        //     new_block->prev = (MallocMetadata*)((uintptr_t)addr + prev_offset);
+        //     new_block->next = (MallocMetadata*)((uintptr_t)addr + next_offset);
+            
+        // }
+
+        std::cout << i << std::endl;
+        std::cout << "new_block : " << new_block  << std::endl;
+        std::cout << "prev      : " << new_block->prev << std::endl;
+        std::cout << "next      : " << new_block->next << std::endl;
+
     }
 
 
@@ -147,7 +177,6 @@ static void* initialize_free_space(){
 
     first_smalloc = false; 
 
-    printf ("initial succedddd"); 
     return addr;
 }
 
@@ -409,7 +438,7 @@ void* smalloc(size_t size){
         return nullptr;
     }
 
-    printf("before initialize ");
+ 
 
     if(first_smalloc){
         if(!initialize_free_space()){
@@ -417,7 +446,7 @@ void* smalloc(size_t size){
         }
     }
 
-    printf("after initialize ");
+    
 
     if(size < MAX_BLOCK_SIZE){
         if(check_max_free_space() >= size){
