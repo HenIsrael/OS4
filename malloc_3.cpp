@@ -34,7 +34,7 @@ struct MallocMetadata {
 // -------------------- Data structure global  -------------------- // 
 
 // Initialization
-static int cookie_recipe = std::rand();
+static int cookie_recipe = std::rand()%10;
 static size_t meta_data_size = sizeof(MallocMetadata);
 static size_t total_free_blocks = 0;
 static size_t total_allocated_blocks = 0;
@@ -117,10 +117,10 @@ static void* initialize_free_space(){
     first->sweet_cookie = cookie_recipe;
     bins[10] = first;
 
-    std::cout << 0 << std::endl;
-    std::cout << "new_block : " << first  << std::endl;
-    std::cout << "prev      : " << first->prev << std::endl;
-    std::cout << "next      : " << first->next << std::endl;
+    //std::cout << 0 << std::endl;
+    //std::cout << "new_block : " << first  << std::endl;
+    //std::cout << "prev      : " << first->prev << std::endl;
+    //std::cout << "next      : " << first->next << std::endl;
 
     MallocMetadata *curr = first;
     
@@ -162,10 +162,10 @@ static void* initialize_free_space(){
             
         // }
 
-        std::cout << i << std::endl;
-        std::cout << "new_block : " << new_block  << std::endl;
-        std::cout << "prev      : " << new_block->prev << std::endl;
-        std::cout << "next      : " << new_block->next << std::endl;
+        //std::cout << i << std::endl;
+        //std::cout << "new_block : " << new_block  << std::endl;
+        //std::cout << "prev      : " << new_block->prev << std::endl;
+        //std::cout << "next      : " << new_block->next << std::endl;
 
     }
 
