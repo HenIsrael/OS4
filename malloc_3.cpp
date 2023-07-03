@@ -15,6 +15,14 @@
 #define INITIAL_BLOCKS_NUM (32)
 #define FREE_SPACE_CHUNK (MAX_BLOCK_SIZE*INITIAL_BLOCKS_NUM)
 
+/**
+ * \todo:
+ * deal with challenge 4
+ * finish writing sfree
+ * check when to update global fields
+ * write realloc
+*/
+
 struct MallocMetadata {
     int sweet_cookie;
     size_t size;
@@ -26,6 +34,7 @@ struct MallocMetadata {
 // -------------------- Data structure global  -------------------- // 
 
 // Initialization
+static int cookie_recipe = std::rand();
 static size_t meta_data_size = sizeof(MallocMetadata);
 static size_t total_free_blocks = 0;
 static size_t total_allocated_blocks = 0;
@@ -46,8 +55,9 @@ static void* split_blocks(int order,size_t size);
 static MallocMetadata* merge_buddies(MallocMetadata *buddy1, MallocMetadata *buddy2);
 static MallocMetadata* find_buddy(MallocMetadata *block);
 static MallocMetadata* remove_block_from_bin(int order);
-static void remove_block_from_bin(MallocMetadata* block);
+static void remove_block_from_bin(MallocMetadata* block, int order);
 static void insert_block_to_bin(MallocMetadata* place, int order);
+static bool malicious_attack(MallocMetadata* block);
 //////////////////////////////////////////////////////////////////
 
 // Implementation part
@@ -57,6 +67,10 @@ static size_t total_free_bytes(){
     for (int order = 0; order < MAX_ORDER+1; order++){
 
         MallocMetadata *current = bins[order];
+        if(malicious_attack(current)){
+            exit(0xdeadbeef);
+        }
+
         int orderi_free_count = 0;
 
         while (!current) orderi_free_count ++, current = current->next;
@@ -96,6 +110,7 @@ static void* initialize_free_space(){
     for(int i=0; i<INITIAL_BLOCKS_NUM; i++){
 
         MallocMetadata *new_block = (MallocMetadata*)(intptr_t)addr + MAX_BLOCK_SIZE*i;
+
         if (i == INITIAL_BLOCKS_NUM -1){ // special case for last block
             new_block->next = nullptr;
         }
@@ -113,12 +128,15 @@ static void* initialize_free_space(){
 
         new_block->is_free = true;
         new_block->size = MAX_BLOCK_SIZE - meta_data_size;
-        new_block->sweet_cookie = std::rand();
+        new_block->sweet_cookie = cookie_recipe;
     }
 
+
     total_free_blocks += INITIAL_BLOCKS_NUM;
+    total_allocated_blocks += INITIAL_BLOCKS_NUM;
+    total_allocated_bytes += FREE_SPACE_CHUNK;
     total_meta_data_bytes += INITIAL_BLOCKS_NUM*meta_data_size;
-    //TODO : add more
+
     first_smalloc = false; 
     return addr;
 }
@@ -137,10 +155,8 @@ static void* split_blocks(int order,size_t size){
         // we don't need to split
         MallocMetadata* block_to_remove = remove_block_from_bin(min_order);
         block_to_remove->is_free = false;
+
         total_free_blocks--;
-        total_allocated_blocks++;
-        total_allocated_bytes+=size;
-        total_meta_data_bytes+=meta_data_size;
         //block_to_remove->cookie?
 
         return (void*)block_to_remove;
@@ -150,28 +166,41 @@ static void* split_blocks(int order,size_t size){
         for (int i = order; i > min_order; i--){
             void * addr_to_split = (void*)remove_block_from_bin(order);
             MallocMetadata* buddy1 =  (MallocMetadata*)addr_to_split;
+
+            if(malicious_attack(buddy1)){
+                exit(0xdeadbeef);
+            }
+
             uintptr_t buddy2_start_addr =  (uintptr_t)buddy1 + MIN_BLOCK_SIZE*pow(2,order-1);
             MallocMetadata* buddy2 = (MallocMetadata*)buddy2_start_addr;
+
+            if(malicious_attack(buddy2)){
+                exit(0xdeadbeef);
+            }
+
+            buddy1->size = MIN_BLOCK_SIZE*pow(2,order-1) - meta_data_size;
+            buddy2->size = MIN_BLOCK_SIZE*pow(2,order-1) - meta_data_size;
+
             insert_block_to_bin(buddy1, order-1);
             insert_block_to_bin(buddy2, order-1);
-            total_free_blocks++; // we remove one but added two buddies
 
-            // TODO: hen added check
+            total_meta_data_bytes += meta_data_size;
+            total_free_blocks++; // we remove one but added two buddies
+            total_allocated_blocks++;
+
             buddy1->is_free = true;
-            buddy1->sweet_cookie = std::rand();
+            buddy1->sweet_cookie = cookie_recipe;
 
             buddy2->is_free = true;
-            buddy2->sweet_cookie = std::rand();
-            total_meta_data_bytes += 2*meta_data_size;
+            buddy2->sweet_cookie =cookie_recipe;
+
         }
 
         // finally remove the right free space and malloc
         MallocMetadata* block_to_remove = remove_block_from_bin(min_order);
         block_to_remove->is_free = false;
+
         total_free_blocks--;
-        total_allocated_blocks++;
-        total_allocated_bytes+=size;
-        //block_to_remove->cookie?
 
         return (void*)block_to_remove;
         
@@ -190,7 +219,12 @@ static MallocMetadata* find_buddy(MallocMetadata *block){
     // check existence for buddy
     for(int order=0; order<MAX_ORDER+1; order++){
 
-        MallocMetadata *current = bins[order]; 
+        MallocMetadata *current = bins[order];
+
+        if(malicious_attack(current)){
+            exit(0xdeadbeef);
+        } 
+
         while (current)
         {
             if(current == potential_buddy_addr){
@@ -207,8 +241,12 @@ static MallocMetadata* find_buddy(MallocMetadata *block){
 static MallocMetadata * merge_buddies(MallocMetadata *buddy1, MallocMetadata *buddy2){
 
     MallocMetadata *big_monster = (MallocMetadata*) (std::min((uintptr_t)buddy1, (uintptr_t)buddy2));
+
+    if(malicious_attack(big_monster)){
+        exit(0xdeadbeef);
+    }
     big_monster->size = buddy1->size + buddy2->size;
-    big_monster->sweet_cookie = std::rand();
+    big_monster->sweet_cookie = cookie_recipe;
     big_monster->next = nullptr;
     big_monster->prev = nullptr;
 
@@ -239,22 +277,69 @@ static MallocMetadata* remove_block_from_bin(int order){
     if(!bins[order]->next){
         //one block
         MallocMetadata* tmp = bins[order];
+
+        if(malicious_attack(tmp)){
+            exit(0xdeadbeef);
+        }
+
         bins[order]=nullptr;
         return tmp;
     }
     //more then one
     MallocMetadata* tmp = bins[order];
+
+    if(malicious_attack(tmp)){
+        exit(0xdeadbeef);
+    }
+
     bins[order] =  bins[order]->next;
     bins[order]->prev = nullptr;
     return tmp;
 }
 
-static void remove_block_from_bin(MallocMetadata* block){
+static void remove_block_from_bin(MallocMetadata* block, int order){
+
+    MallocMetadata *curr = bins[order];
+
+    if(malicious_attack(curr)){
+        exit(0xdeadbeef);
+    }
+    while(!curr->next){
+        // block to remove in the middle
+        if(curr = block){
+            block->prev->next = block->next;
+            block->next->prev = block->prev;
+            block->next = nullptr;
+            block->prev = nullptr;
+            return;
+        }
+
+        curr = curr->next; 
+    }
+         
+    if (curr = bins[order]){
+        //the block to remove is head
+        remove_block_from_bin(order);
+        return;
+    }
+    else{
+        // the block to remove is tail
+        block->prev->next = nullptr;
+        block->prev = nullptr;
+        block->next = nullptr;
+        return;
+    }
+
+return;
 
 }
 
 static void insert_block_to_bin(MallocMetadata* place, int order){
     MallocMetadata* runner = bins[order];
+
+    if(malicious_attack(runner)){
+        exit(0xdeadbeef);
+    }
     if (!runner)
     {
         bins[order]= place;
@@ -267,9 +352,13 @@ static void insert_block_to_bin(MallocMetadata* place, int order){
     while (runner)
     {
         runner_prev = runner->prev;
+
+        if(malicious_attack(runner_prev)){
+            exit(0xdeadbeef);
+        }
+
         if((uintptr_t)place < (uintptr_t)runner)
         {
-            //MallocMetadata* tmp = runner->prev;
             runner_prev->next = place;
             runner->prev = place;
             place->next = runner;
@@ -296,6 +385,10 @@ static size_t check_max_free_space(){
     }
     return 0 ;
 }
+
+ bool malicious_attack(MallocMetadata* block){
+    (block->sweet_cookie == cookie_recipe)? false : true;
+ }
 
 // -------------------- Better Malloc Implementation  -------------------- // 
 
@@ -334,8 +427,13 @@ void* smalloc(size_t size){
             return nullptr;
         }
         MallocMetadata* big_block = (MallocMetadata *)big_block_addr;
+
+        if(malicious_attack(big_block)){
+            exit(0xdeadbeef);
+        }
+
         big_block->is_free = false;
-        big_block->sweet_cookie = std::rand();
+        big_block->sweet_cookie = cookie_recipe;
         big_block->next = nullptr;
         big_block->prev = nullptr; 
 
@@ -369,6 +467,11 @@ void sfree(void *p) {
     }
 
     MallocMetadata* block_let_it_go = (MallocMetadata*)((uintptr_t)p - (uintptr_t)meta_data_size);
+
+    if(malicious_attack(block_let_it_go)){
+        exit(0xdeadbeef);
+    }
+
     if(block_let_it_go->is_free){
         return;
     }
@@ -385,54 +488,40 @@ void sfree(void *p) {
     else{// add free block(s) to “buddy memory”
 
         int order = log2((block_let_it_go->size + meta_data_size)/MIN_BLOCK_SIZE);
-        insert_block_to_bin(block_let_it_go, order); 
+        insert_block_to_bin(block_let_it_go, order);
         block_let_it_go->is_free = true;
-        //TODO : add global
+        
+        total_free_blocks++;
+  
 
         MallocMetadata *buddy = find_buddy(block_let_it_go);
+
         while(buddy && order <= MAX_ORDER-1){
+
             MallocMetadata *merged_block = merge_buddies(block_let_it_go, buddy);
-            remove_block_from_bin(block_let_it_go);
-            remove_block_from_bin(buddy);
+            remove_block_from_bin(block_let_it_go, order);
+            remove_block_from_bin(buddy, order);
             insert_block_to_bin(merged_block, order+1);
-            buddy = merged_block;
 
-            //TODO : add global
+            merged_block->is_free = true;
+
+            total_free_blocks--;
+            total_allocated_blocks--;
+            total_meta_data_bytes -= meta_data_size;
+            
+            block_let_it_go = merged_block;
+            buddy = find_buddy(block_let_it_go);
+            order++;
+
         }
-
-
-        /*
-
-        insert( block let it go);
-        block_let_it_go->is_free = true;
-
-        while ( buddy)
-        {
-            merged block = merge (let it go , buddies );
-            new_remove( merged block, order );
-            insert(merged block , order+1);
-            buddy = merged block;
-        }
-        
-        
-        
-        
-        
-        */
-
 
     }
     
-    
 }
-
 
 void *srealloc(void *oldp, size_t size) {
-
-    
+    return;
 }
-
-
 
 size_t _num_free_blocks()
 {
