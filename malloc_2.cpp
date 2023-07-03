@@ -215,7 +215,7 @@ size_t List::get_block_size(void* address){
 
     MallocMetadata *runner = head;
     while(runner){
-        if(runner->start_address=address){
+        if(runner->start_address == address){
             return runner->size;
         }
         runner = runner->next;

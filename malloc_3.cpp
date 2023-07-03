@@ -102,7 +102,7 @@ static void* initialize_free_space(){
         return nullptr;
     }
     
-    void *addr = sbrk((intptr_t)FREE_SPACE_CHUNK);
+    void *addr = sbrk(1024*128*32);//((intptr_t)FREE_SPACE_CHUNK);
     if(addr == (void*)(-1)){
         return nullptr;
     }
@@ -111,12 +111,20 @@ static void* initialize_free_space(){
 
         MallocMetadata *new_block = (MallocMetadata*)(intptr_t)addr + MAX_BLOCK_SIZE*i;
 
+
         if (i == INITIAL_BLOCKS_NUM -1){ // special case for last block
             new_block->next = nullptr;
         }
 
         else{
-            new_block->next = (MallocMetadata*)(intptr_t)addr + MAX_BLOCK_SIZE*(i+1);
+            printf ("before check \n"); 
+            std::cout << i << std::endl;
+            uintptr_t offset = MAX_BLOCK_SIZE*(i+1);
+            void * nxt_adrr = (void *)((uintptr_t)addr + offset);
+            std::cout << nxt_adrr << std::endl;
+            new_block->next = (MallocMetadata*)nxt_adrr;
+            std::cout << new_block->next << std::endl;
+            printf ("after check \n"); 
         }
 
         if(i==0){ // special case for first clock
@@ -138,6 +146,8 @@ static void* initialize_free_space(){
     total_meta_data_bytes += INITIAL_BLOCKS_NUM*meta_data_size;
 
     first_smalloc = false; 
+
+    printf ("initial succedddd"); 
     return addr;
 }
 
@@ -306,7 +316,7 @@ static void remove_block_from_bin(MallocMetadata* block, int order){
     }
     while(!curr->next){
         // block to remove in the middle
-        if(curr = block){
+        if(curr == block){
             block->prev->next = block->next;
             block->next->prev = block->prev;
             block->next = nullptr;
@@ -317,7 +327,7 @@ static void remove_block_from_bin(MallocMetadata* block, int order){
         curr = curr->next; 
     }
          
-    if (curr = bins[order]){
+    if (curr == bins[order]){
         //the block to remove is head
         remove_block_from_bin(order);
         return;
@@ -387,7 +397,7 @@ static size_t check_max_free_space(){
 }
 
  bool malicious_attack(MallocMetadata* block){
-    (block->sweet_cookie == cookie_recipe)? false : true;
+    return (block->sweet_cookie == cookie_recipe)? false : true;
  }
 
 // -------------------- Better Malloc Implementation  -------------------- // 
@@ -399,17 +409,21 @@ void* smalloc(size_t size){
         return nullptr;
     }
 
+    printf("before initialize ");
+
     if(first_smalloc){
         if(!initialize_free_space()){
             return nullptr;
         }
     }
 
+    printf("after initialize ");
+
     if(size < MAX_BLOCK_SIZE){
         if(check_max_free_space() >= size){
 
             void* place = find_minimal_space(size);
-            return place+meta_data_size;
+            return (void *)((uintptr_t)place+meta_data_size);
         }
         else {
             // there is not enough free space that can holds size
@@ -442,7 +456,7 @@ void* smalloc(size_t size){
         total_allocated_bytes += size; 
         total_meta_data_bytes += meta_data_size;
 
-        return big_block_addr+meta_data_size;
+        return (void *)((uintptr_t)big_block_addr+meta_data_size);
         
     }
 }
@@ -520,7 +534,7 @@ void sfree(void *p) {
 }
 
 void *srealloc(void *oldp, size_t size) {
-    return;
+    return (void *)-1;
 }
 
 size_t _num_free_blocks()
@@ -530,6 +544,10 @@ size_t _num_free_blocks()
 
 size_t _num_free_bytes()
 {
+    if(first_smalloc)
+    {
+        return 0;
+    }
     return total_free_bytes();
 }
 
