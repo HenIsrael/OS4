@@ -6,6 +6,8 @@
 #include <cstdio>
 #include <iostream>
 
+#include <set>
+
 
 #define MAX_ALLOCATE (1e8)
 #define MAX_ORDER (10)
@@ -67,6 +69,10 @@ static size_t total_free_bytes(){
     int orderi_free_count;
     for (int order = 0; order < MAX_ORDER+1; order++){
 
+        if(!bins[order]){
+            continue;
+        }
+
         MallocMetadata *current = bins[order];
         if(malicious_attack(current)){
             exit(0xdeadbeef);
@@ -74,7 +80,7 @@ static size_t total_free_bytes(){
 
         orderi_free_count = 0;
 
-        while (current){
+        while(current){
 
             orderi_free_count ++;
             current = current->next;
@@ -231,7 +237,7 @@ static MallocMetadata* find_buddy(MallocMetadata *block){
         return nullptr;
     }
 
-    void *potential_buddy_addr = (void*)((uintptr_t)block ^ block->size);
+    void *potential_buddy_addr = (void*)((uintptr_t)block ^ (block->size+meta_data_size));
 
     // check existence for buddy
     for(int order=0; order<MAX_ORDER+1; order++){
@@ -418,6 +424,49 @@ static size_t check_max_free_space(){
     return (block->sweet_cookie == cookie_recipe)? false : true;
  }
 
+ static void print_building(){
+
+    std::set<int> building = {};
+
+    for(int order=0; order<MAX_ORDER+1; order++){
+
+        if(!bins[order]){
+            building.insert(0);
+        }
+        else{
+
+            MallocMetadata *current = bins[order];
+
+            if(malicious_attack(current)){
+                exit(0xdeadbeef);
+            }
+
+            int orderi_free_count = 0;
+
+            while(current){
+
+                orderi_free_count ++;
+                current = current->next;
+
+            }
+
+            building.insert(orderi_free_count);
+        
+
+        }
+
+    }
+
+    std::cout << "free building blocks" << std::endl;
+
+    for (const auto& element : building) {
+        std::cout << element << " ";
+    }
+
+    std::cout << std::endl;
+ }
+
+
 // -------------------- Better Malloc Implementation  -------------------- // 
 
 void* smalloc(size_t size){
@@ -501,6 +550,7 @@ void sfree(void *p) {
     }
 
     MallocMetadata* block_let_it_go = (MallocMetadata*)((uintptr_t)p - (uintptr_t)meta_data_size);
+    std::cout << "now if trying to free block: " << block_let_it_go << std::endl;
 
     if(malicious_attack(block_let_it_go)){
         exit(0xdeadbeef);
@@ -532,6 +582,9 @@ void sfree(void *p) {
 
         MallocMetadata *buddy = find_buddy(block_let_it_go);
 
+        std::cout << "buddy :" << buddy << std::endl;
+        std::cout << "block_let_it_go :" << block_let_it_go << std::endl;
+
         while(buddy && order <= MAX_ORDER-1){
 
             MallocMetadata *merged_block = merge_buddies(block_let_it_go, buddy);
@@ -553,6 +606,8 @@ void sfree(void *p) {
         }
 
     }
+
+    print_building();
     
 }
 
