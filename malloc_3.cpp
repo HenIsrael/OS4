@@ -82,11 +82,9 @@ static size_t total_free_bytes(){
         } 
         
         total_free_bytes_with_meta += orderi_free_count*MIN_BLOCK_SIZE*pow(2,order);
-        //std::cout << "order : " << order << "count : " << orderi_free_count << std::endl;
+
     }
 
-    //std::cout << "total free : " << total_free_blocks << std::endl;
-    //std::cout << "total_free_bytes_with_meta : " << total_free_bytes_with_meta << std::endl;
     return total_free_bytes_with_meta - (total_free_blocks*meta_data_size);
 }
 static void* first_alignment_blocks(){
@@ -126,11 +124,6 @@ static void* initialize_free_space(){
     first->sweet_cookie = cookie_recipe;
     bins[10] = first;
 
-    //std::cout << 0 << std::endl;
-    //std::cout << "new_block : " << first  << std::endl;
-    //std::cout << "prev      : " << first->prev << std::endl;
-    //std::cout << "next      : " << first->next << std::endl;
-
     MallocMetadata *curr = first;
     
 
@@ -147,34 +140,6 @@ static void* initialize_free_space(){
         new_block->sweet_cookie = cookie_recipe;
 
         curr = new_block;
-
-
-        // if (i == INITIAL_BLOCKS_NUM -1){ // special case for last block
-        //     new_block->next = nullptr;
-        //     size_t prev_offset = MAX_BLOCK_SIZE*(INITIAL_BLOCKS_NUM-2);
-        //     new_block->prev = (MallocMetadata*)((uintptr_t)addr + prev_offset);
-        // }
-
-        // else if (i==0){ // special case for first block
-        //     new_block->prev = nullptr;
-        //     size_t next_offset = MAX_BLOCK_SIZE;
-        //     new_block->next = (MallocMetadata*)((uintptr_t)addr + next_offset);
-        //     bins[10] = new_block;
-        // }
-
-        // else{ // all other blocks
-        //     size_t prev_offset = MAX_BLOCK_SIZE*(i-1);
-        //     size_t next_offset = MAX_BLOCK_SIZE*(i+1);
-
-        //     new_block->prev = (MallocMetadata*)((uintptr_t)addr + prev_offset);
-        //     new_block->next = (MallocMetadata*)((uintptr_t)addr + next_offset);
-            
-        // }
-
-        //std::cout << i << std::endl;
-        //std::cout << "new_block : " << new_block  << std::endl;
-        //std::cout << "prev      : " << new_block->prev << std::endl;
-        //std::cout << "next      : " << new_block->next << std::endl;
 
     }
 
@@ -198,29 +163,22 @@ static void* split_blocks(int order,size_t size){
     min_order++;
 
     int num_of_splits = order - min_order;
-    //std::cout << "num of splits in split blocks func : " << num_of_splits << std::endl;
 
     if (num_of_splits == 0){
 
         // we don't need to split
-        std::cout << "we dont need to split : " << num_of_splits << std::endl;
+
         MallocMetadata* block_to_remove = remove_block_from_bin(min_order);
-        std::cout << "remove OK!!!!!!!!!!!!!!!!!!!!!!! : " << std::endl;
         block_to_remove->is_free = false;
-
         total_free_blocks--;
-        //block_to_remove->cookie?
 
-        std::cout << "block_to_remove : " << block_to_remove << std::endl;
         return (void*)block_to_remove;
     }
     else{
-        // need to 
-        //std::cout << "need to split : " << num_of_splits << std::endl;
+
         for (int i = order; i > min_order; i--){
-            //std::cout << "before remove block from bin : "  << std::endl;
+
             void * addr_to_split = (void*)remove_block_from_bin(i);
-            //std::cout << "after remove block from bin : "  << std::endl;
             MallocMetadata* buddy1 =  (MallocMetadata*)addr_to_split;
 
             if(malicious_attack(buddy1)){
@@ -230,7 +188,6 @@ static void* split_blocks(int order,size_t size){
             uintptr_t buddy2_start_addr =  (uintptr_t)buddy1 + MIN_BLOCK_SIZE*pow(2,i-1);
             MallocMetadata* buddy2 = (MallocMetadata*)buddy2_start_addr;
             buddy2->sweet_cookie = cookie_recipe;
-            //std::cout << "buddy 2 : "  <<buddy2<< std::endl;
 
             if(malicious_attack(buddy2)){
                 exit(0xdeadbeef);
@@ -239,12 +196,9 @@ static void* split_blocks(int order,size_t size){
             buddy1->size = MIN_BLOCK_SIZE*pow(2,i-1) - meta_data_size;
             buddy2->size = MIN_BLOCK_SIZE*pow(2,i-1) - meta_data_size;
 
-            //std::cout << "before insert buddys : "  << std::endl;
-
             insert_block_to_bin(buddy1, i-1);
             insert_block_to_bin(buddy2, i-1);
 
-            //std::cout << "after  insert buddys : "  << std::endl;
 
             total_meta_data_bytes += meta_data_size;
             total_free_blocks++; // we remove one but added two buddies
@@ -323,7 +277,6 @@ static void* find_minimal_space(size_t size){
             //case there is free blocks in order i
             if((MIN_BLOCK_SIZE*pow(2,order)-meta_data_size) >= size){
                 // case size order good enough
-                //std::cout << "before " << order <<" : " << order<< " split blocks"  << std::endl;
                 return split_blocks(order,size);
             }
         }
@@ -358,7 +311,7 @@ static MallocMetadata* remove_block_from_bin(int order){
 
     bins[order] =  bins[order]->next;
     bins[order]->prev = nullptr;
-    //std::cout << "adrress of removal block : "<< tmp << std::endl;
+
     return tmp;
 }
 
@@ -407,29 +360,21 @@ static void insert_block_to_bin(MallocMetadata* place, int order){
     }
     if (!runner)
     {
-        //std::cout << "insert   : if runner is nullptr " <<std::endl;
         bins[order]= place;
         bins[order]->prev = nullptr;
         bins[order]->next = nullptr;
         return;
     }
     
-    //MallocMetadata* runner_prev;
-    //std::cout << "insert   : entering to while loop  " <<std::endl;
     while (runner->next)
     {
-        //runner_prev = runner->prev;
-
-        // if(malicious_attack(runner_prev)){
-        //     exit(0xdeadbeef);
-        // }
 
         if((uintptr_t)place < (uintptr_t)runner)
         {
             if(runner == bins[order])
             {
                 //case in head
-                //std::cout << "insert   : case in head " <<std::endl;
+
                 place->next = runner;
                 place->prev = nullptr;
                 runner->prev = place;
@@ -438,7 +383,7 @@ static void insert_block_to_bin(MallocMetadata* place, int order){
             }
 
             //case there is prev
-            //std::cout << "insert   : case in prev " <<std::endl; 
+ 
             MallocMetadata* tmp = runner->prev;
             runner->prev = place;
             tmp->next = place;
@@ -452,7 +397,7 @@ static void insert_block_to_bin(MallocMetadata* place, int order){
     }
 
     //insert to tail
-    //std::cout << "insert   : case in tail " <<std::endl;
+ 
     runner->next = place;
     place->prev = runner;
     place->next = nullptr;
@@ -495,10 +440,7 @@ void* smalloc(size_t size){
     if(size < MAX_BLOCK_SIZE){
         if(check_max_free_space() >= size){
 
-            //std::cout << "before find minimak space with size : " << size  << std::endl;
-
             void* place = find_minimal_space(size);
-            std::cout << place << std::endl;
             return (void *)((uintptr_t)place+meta_data_size);
         }
         else {
@@ -514,7 +456,6 @@ void* smalloc(size_t size){
         void *big_block_addr = mmap(NULL, (size + meta_data_size), PROT_WRITE | PROT_READ, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
         if (big_block_addr == (void *)-1)
         {
-            //std::cout << " big block mmap failed "<< std::endl;
             return nullptr;
         }
         MallocMetadata* big_block = (MallocMetadata *)big_block_addr;
@@ -534,7 +475,6 @@ void* smalloc(size_t size){
         total_allocated_bytes += size; 
         total_meta_data_bytes += meta_data_size;
 
-        //std::cout << " malloc mmapsucced "<< std::endl;
         return (void *)((uintptr_t)big_block_addr+meta_data_size);
         
     }
@@ -555,19 +495,17 @@ void *scalloc(size_t num, size_t size) {
 }
 
 void sfree(void *p) {
-    std::cout << "im in free"  << std::endl ; 
+ 
     if (!p){
         return;
     }
 
     MallocMetadata* block_let_it_go = (MallocMetadata*)((uintptr_t)p - (uintptr_t)meta_data_size);
-    //std::cout << "block let it go address is :" << block_let_it_go << std::endl ; 
 
-    std::cout << "before cookie :"  << std::endl ; 
     if(malicious_attack(block_let_it_go)){
         exit(0xdeadbeef);
     }
-    std::cout << "after cookie :"  << std::endl ; 
+
 
     if(block_let_it_go->is_free){
         return;
@@ -575,7 +513,7 @@ void sfree(void *p) {
 
     if (block_let_it_go->size >= MAX_BLOCK_SIZE)
     {
-        //std::cout << "currently in if maxblocksize " << std::endl ; 
+ 
         total_allocated_blocks --;
         total_allocated_bytes -= block_let_it_go->size;
         total_meta_data_bytes -= meta_data_size;
@@ -585,9 +523,7 @@ void sfree(void *p) {
     }
     else{// add free block(s) to “buddy memory”
 
-        std::cout << "in else in sfree "<< std::endl;
         int order = log2((block_let_it_go->size + meta_data_size)/MIN_BLOCK_SIZE);
-        std::cout << "order in log2 : "<< order << std::endl;
         insert_block_to_bin(block_let_it_go, order);
         block_let_it_go->is_free = true;
         
