@@ -60,6 +60,7 @@ static MallocMetadata* remove_block_from_bin(int order);
 static void remove_block_from_bin(MallocMetadata* block, int order);
 static void insert_block_to_bin(MallocMetadata* place, int order);
 static bool malicious_attack(MallocMetadata* block);
+static void print_building();
 //////////////////////////////////////////////////////////////////
 
 // Implementation part
@@ -322,39 +323,82 @@ static MallocMetadata* remove_block_from_bin(int order){
 }
 
 static void remove_block_from_bin(MallocMetadata* block, int order){
-
+    if (!bins[order]){
+        printf("trying to delete null value!!!!");
+        return;
+    }
+    
     MallocMetadata *curr = bins[order];
 
+    std::cout << "before cookie"   << std::endl;
+    
     if(malicious_attack(curr)){
         exit(0xdeadbeef);
     }
-    while(!curr->next){
-        // block to remove in the middle
-        if(curr == block){
-            block->prev->next = block->next;
-            block->next->prev = block->prev;
+
+    std::cout << "after cookie"   << std::endl;
+
+    // case head
+    if(block == curr){
+        if (!block->next)
+        // case head and lonly
+        {
+            std::cout << "case head and lonley"   << std::endl;
+            bins[order] = nullptr;
             block->next = nullptr;
             block->prev = nullptr;
             return;
         }
 
-        curr = curr->next; 
+        else{
+            // head have friends
+            std::cout << "case head and friends"   << std::endl;
+            bins[order] = block->next;
+            bins[order]->prev = nullptr;
+            block->next = nullptr;
+            block->prev = nullptr;
+            return;
+        }
+        
     }
-         
-    if (curr == bins[order]){
-        //the block to remove is head
-        remove_block_from_bin(order);
-        return;
-    }
-    else{
-        // the block to remove is tail
-        block->prev->next = nullptr;
-        block->prev = nullptr;
-        block->next = nullptr;
-        return;
+    //case middle 
+    //curr=curr->next;
+    print_building();
+    std::cout << "case midlle"   << std::endl;
+    while(curr){
+        std::cout << "in while"   << std::endl;
+
+        if(curr == block){
+            //case tail
+            
+            if(!curr->next){
+                std::cout << "curr == block in tail"   << std::endl;
+                block->prev->next = nullptr;
+                std::cout << "after row 1"   << std::endl;
+                block->next = nullptr;
+                block->prev = nullptr;
+                return;
+            }
+
+            else{
+                //case middle
+                std::cout << "curr == block in middle"   << std::endl;
+                curr->prev->next = curr->next;
+                curr->next->prev = curr->prev;
+                block->next = nullptr;
+                block->prev = nullptr;
+                return;
+            }
+
+        }
+
+        curr = curr->next;
+        
+   
     }
 
-return;
+    std::cout << "OPS!!!"   << std::endl;
+    return;
 
 }
 
@@ -366,48 +410,70 @@ static void insert_block_to_bin(MallocMetadata* place, int order){
     }
     if (!runner)
     {
+        //if list in that order is empty
         bins[order]= place;
         bins[order]->prev = nullptr;
         bins[order]->next = nullptr;
         return;
     }
+
     
-    while (runner->next)
-    {
+    // case head lonley
+    if(!bins[order]->next){
+        if((uintptr_t)place < (uintptr_t)bins[order]){
 
-        if((uintptr_t)place < (uintptr_t)runner)
-        {
-            if(runner == bins[order])
-            {
-                //case in head
+            // place will be in the head
+            MallocMetadata* tmp = bins[order];
 
-                place->next = runner;
-                place->prev = nullptr;
-                runner->prev = place;
-                bins[order] = place;
-                return;
-            }
-
-            //case there is prev
- 
-            MallocMetadata* tmp = runner->prev;
-            runner->prev = place;
-            tmp->next = place;
-            place->prev = tmp;
-            place->next = runner;
+            bins[order] = place;
+            bins[order]->prev = nullptr;
+            bins[order]->next = tmp;
+            tmp->prev = bins[order];
+            tmp->next = nullptr;
             return;
         }
 
+        else{
+            // place will be in the tail
+            bins[order]->next = place;
+            place->prev = bins[order];
+            place->next = nullptr;
+            return;
+        }
+        
+    }
+    
+    while (runner)
+    {
+        if(!runner->next && (uintptr_t)place > (uintptr_t)runner)
+        {
+            //insert place  to the tail
+            runner->next = place;
+            place->prev = runner;
+            place->next = nullptr;
+            return;
+
+        }
+
+        if((uintptr_t)place < (uintptr_t)runner)
+        {
+            //insert place to the middle
+            MallocMetadata *tmp = runner->prev;
+            place->next = runner;
+            runner->prev = place;
+            tmp->next = place;
+            place->prev = tmp;
+            return;
+        }
+        
         runner= runner->next;
 
     }
 
-    //insert to tail
- 
-    runner->next = place;
-    place->prev = runner;
-    place->next = nullptr;
+    printf("Opppps");
     return;
+ 
+    
 }
 
 static size_t check_max_free_space(){
@@ -575,6 +641,7 @@ void sfree(void *p) {
 
         int order = log2((block_let_it_go->size + meta_data_size)/MIN_BLOCK_SIZE);
         insert_block_to_bin(block_let_it_go, order);
+        std::cout << "starting order of block to merde :" << order << std::endl;
         block_let_it_go->is_free = true;
         
         total_free_blocks++;
@@ -582,15 +649,27 @@ void sfree(void *p) {
 
         MallocMetadata *buddy = find_buddy(block_let_it_go);
 
-        std::cout << "buddy :" << buddy << std::endl;
+        if(buddy)
+        {
+            std::cout << "buddy size :" << buddy->size << std::endl;
+            std::cout << "buddy :" << buddy <<"calculated order : "<< log2((buddy->size + meta_data_size)/MIN_BLOCK_SIZE)<< std::endl;
+        }
+
+        
         std::cout << "block_let_it_go :" << block_let_it_go << std::endl;
+        std::cout << "merging in order :" << order << std::endl;
 
         while(buddy && order <= MAX_ORDER-1){
-
+            std::cout << "entered to while merging loop :" << order << std::endl;
             MallocMetadata *merged_block = merge_buddies(block_let_it_go, buddy);
+            std::cout << "merged buddies succed :" << merged_block << std::endl;
             remove_block_from_bin(block_let_it_go, order);
+            std::cout << "first remove succedd:" << block_let_it_go << std::endl;
+            std::cout << "lets see if buddy changed!! :" << buddy << std::endl;
             remove_block_from_bin(buddy, order);
+            std::cout << "second remove succedd:" << buddy << std::endl;
             insert_block_to_bin(merged_block, order+1);
+            std::cout << "insert succedd:" << merged_block << std::endl;
 
             merged_block->is_free = true;
 
@@ -600,7 +679,7 @@ void sfree(void *p) {
             total_meta_data_bytes -= meta_data_size;
             
             block_let_it_go = merged_block;
-            buddy = find_buddy(block_let_it_go);
+            buddy = find_buddy(block_let_it_go );
             order++;
 
         }
