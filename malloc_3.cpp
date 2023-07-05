@@ -6,7 +6,7 @@
 #include <cstdio>
 #include <iostream>
 
-#include <set>
+#include <vector>
 
 
 #define MAX_ALLOCATE (1e8)
@@ -157,7 +157,7 @@ static void* initialize_free_space(){
     total_meta_data_bytes += INITIAL_BLOCKS_NUM*meta_data_size;
 
     first_smalloc = false; 
-
+    print_building();
     return addr;
 }
 
@@ -330,20 +330,18 @@ static void remove_block_from_bin(MallocMetadata* block, int order){
     
     MallocMetadata *curr = bins[order];
 
-    std::cout << "before cookie"   << std::endl;
+
     
     if(malicious_attack(curr)){
         exit(0xdeadbeef);
     }
-
-    std::cout << "after cookie"   << std::endl;
 
     // case head
     if(block == curr){
         if (!block->next)
         // case head and lonly
         {
-            std::cout << "case head and lonley"   << std::endl;
+
             bins[order] = nullptr;
             block->next = nullptr;
             block->prev = nullptr;
@@ -352,7 +350,7 @@ static void remove_block_from_bin(MallocMetadata* block, int order){
 
         else{
             // head have friends
-            std::cout << "case head and friends"   << std::endl;
+
             bins[order] = block->next;
             bins[order]->prev = nullptr;
             block->next = nullptr;
@@ -361,20 +359,16 @@ static void remove_block_from_bin(MallocMetadata* block, int order){
         }
         
     }
-    //case middle 
-    //curr=curr->next;
-    print_building();
-    std::cout << "case midlle"   << std::endl;
+
     while(curr){
-        std::cout << "in while"   << std::endl;
 
         if(curr == block){
             //case tail
             
             if(!curr->next){
-                std::cout << "curr == block in tail"   << std::endl;
+
                 block->prev->next = nullptr;
-                std::cout << "after row 1"   << std::endl;
+
                 block->next = nullptr;
                 block->prev = nullptr;
                 return;
@@ -382,7 +376,7 @@ static void remove_block_from_bin(MallocMetadata* block, int order){
 
             else{
                 //case middle
-                std::cout << "curr == block in middle"   << std::endl;
+
                 curr->prev->next = curr->next;
                 curr->next->prev = curr->prev;
                 block->next = nullptr;
@@ -492,34 +486,32 @@ static size_t check_max_free_space(){
 
  static void print_building(){
 
-    std::set<int> building = {};
+    std::vector<int> building = {};
 
     for(int order=0; order<MAX_ORDER+1; order++){
 
-        if(!bins[order]){
-            building.insert(0);
-        }
-        else{
-
-            MallocMetadata *current = bins[order];
-
-            if(malicious_attack(current)){
-                exit(0xdeadbeef);
-            }
-
-            int orderi_free_count = 0;
-
-            while(current){
-
-                orderi_free_count ++;
-                current = current->next;
-
-            }
-
-            building.insert(orderi_free_count);
+        // if(!bins[order]){
+        //     building.push_back(0);
+        // }
         
 
+        MallocMetadata *current = bins[order];
+
+        if(malicious_attack(current)){
+            exit(0xdeadbeef);
         }
+
+        int orderi_free_count = 0;
+
+        while(current){
+
+            orderi_free_count ++;
+            current = current->next;
+
+        }
+
+        building.push_back(orderi_free_count);
+        
 
     }
 
@@ -641,7 +633,7 @@ void sfree(void *p) {
 
         int order = log2((block_let_it_go->size + meta_data_size)/MIN_BLOCK_SIZE);
         insert_block_to_bin(block_let_it_go, order);
-        std::cout << "starting order of block to merde :" << order << std::endl;
+
         block_let_it_go->is_free = true;
         
         total_free_blocks++;
@@ -649,27 +641,16 @@ void sfree(void *p) {
 
         MallocMetadata *buddy = find_buddy(block_let_it_go);
 
-        if(buddy)
-        {
-            std::cout << "buddy size :" << buddy->size << std::endl;
-            std::cout << "buddy :" << buddy <<"calculated order : "<< log2((buddy->size + meta_data_size)/MIN_BLOCK_SIZE)<< std::endl;
-        }
-
-        
-        std::cout << "block_let_it_go :" << block_let_it_go << std::endl;
-        std::cout << "merging in order :" << order << std::endl;
-
         while(buddy && order <= MAX_ORDER-1){
-            std::cout << "entered to while merging loop :" << order << std::endl;
+
             MallocMetadata *merged_block = merge_buddies(block_let_it_go, buddy);
-            std::cout << "merged buddies succed :" << merged_block << std::endl;
+
             remove_block_from_bin(block_let_it_go, order);
-            std::cout << "first remove succedd:" << block_let_it_go << std::endl;
-            std::cout << "lets see if buddy changed!! :" << buddy << std::endl;
+
             remove_block_from_bin(buddy, order);
-            std::cout << "second remove succedd:" << buddy << std::endl;
+
             insert_block_to_bin(merged_block, order+1);
-            std::cout << "insert succedd:" << merged_block << std::endl;
+
 
             merged_block->is_free = true;
 
