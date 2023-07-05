@@ -54,7 +54,7 @@ static size_t total_free_bytes();
 static size_t check_max_free_space();
 static void* find_minimal_space(size_t size);
 static void* split_blocks(int order,size_t size);
-static MallocMetadata* merge_buddies(MallocMetadata *buddy1, MallocMetadata *buddy2);
+static MallocMetadata* merge_buddies(MallocMetadata *buddy1, MallocMetadata *buddy2, int new_order);
 static MallocMetadata* find_buddy(MallocMetadata *block);
 static MallocMetadata* remove_block_from_bin(int order);
 static void remove_block_from_bin(MallocMetadata* block, int order);
@@ -268,14 +268,14 @@ static MallocMetadata* find_buddy(MallocMetadata *block){
     return nullptr; // no buddy :(
 }
 
-static MallocMetadata * merge_buddies(MallocMetadata *buddy1, MallocMetadata *buddy2){
+static MallocMetadata * merge_buddies(MallocMetadata *buddy1, MallocMetadata *buddy2, int new_order){
 
     MallocMetadata *big_monster = (MallocMetadata*) (std::min((uintptr_t)buddy1, (uintptr_t)buddy2));
 
     if(malicious_attack(big_monster)){
         exit(0xdeadbeef);
     }
-    big_monster->size = buddy1->size + buddy2->size;
+    big_monster->size = MIN_BLOCK_SIZE*pow(2,new_order) - meta_data_size;
     big_monster->sweet_cookie = cookie_recipe;
     // big_monster->next = nullptr;
     // big_monster->prev = nullptr;
@@ -423,6 +423,7 @@ static void insert_block_to_bin(MallocMetadata* place, int order){
         if((uintptr_t)place < (uintptr_t)bins[order]){
 
             // place will be in the head
+            std::cout << "insert to lonly head" << std::endl;
             MallocMetadata* tmp = bins[order];
 
             bins[order] = place;
@@ -442,12 +443,15 @@ static void insert_block_to_bin(MallocMetadata* place, int order){
         }
         
     }
+
+    // case head have friends
     
     while (runner)
     {
         if(!runner->next && (uintptr_t)place > (uintptr_t)runner)
         {
-            //insert place  to the tail
+            //place will be in the tail
+            std::cout << "insert to tail" << std::endl;
             runner->next = place;
             place->prev = runner;
             place->next = nullptr;
@@ -455,9 +459,23 @@ static void insert_block_to_bin(MallocMetadata* place, int order){
 
         }
 
-        if((uintptr_t)place < (uintptr_t)runner)
+        else if((uintptr_t)place < (uintptr_t)runner && !runner->prev){
+            //insert place to the head
+
+            std::cout << "insert to the head" << std::endl;
+            runner->prev = place;
+            place->next = runner;
+            place->prev = nullptr;
+            bins[order] = place;
+            return;
+
+        }
+
+
+        else if((uintptr_t)place < (uintptr_t)runner)
         {
             //insert place to the middle
+
             MallocMetadata *tmp = runner->prev;
             place->next = runner;
             runner->prev = place;
@@ -663,9 +681,9 @@ void sfree(void *p) {
             std::cout << "in order : " << order <<  std::endl;
             
 
-            MallocMetadata *merged_block = merge_buddies(block_let_it_go, buddy);
+            MallocMetadata *merged_block = merge_buddies(block_let_it_go, buddy, order+1);
             
-            std::cout << "removing buddies and insert merged block : "  <<  std::endl;
+            std::cout << " before removing buddies and insert merged block : "  <<  std::endl;
             print_building();
 
             remove_block_from_bin(block_let_it_go, order);
@@ -688,9 +706,8 @@ void sfree(void *p) {
             total_allocated_bytes+=meta_data_size;
             total_meta_data_bytes -= meta_data_size;
             
-            std::cout << "merged block: "<< merged_block << "size = " << merged_block->size<<  std::endl;
-            MallocMetadata *buddy_of_merged_block = bins[1]->next; 
-            std::cout << "buddy of merged block: "<< buddy_of_merged_block <<  std::endl;
+            std::cout << "merged block: " << merged_block << ", size = " << merged_block->size<<  std::endl;
+
             buddy = find_buddy(merged_block);
             std::cout << "budyyyy: "<< buddy <<  std::endl;
 
