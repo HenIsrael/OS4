@@ -405,9 +405,11 @@ TEST_CASE("srealloc merges test", "[malloc3]")
     std::cout << "first malloc OK :)" << std::endl;
 
     // Reallocate to a larger size
+    std::cout << "Trying realloc" << std::endl;
     void* ptr2 = srealloc(ptr1, 128*pow(2,2) -64);
     REQUIRE(ptr2 != nullptr);
     verify_block_by_order(0,0,0,0,1,1,1,0,1,0,1,0,1,0,1,0,1,0,1,0,31,0,0,0);
+    std::cout << "realloc OK :)" << std::endl;
     int* newArr = static_cast<int*>(ptr2);
 
     // Verify  elements are copied

@@ -154,7 +154,6 @@ static void* initialize_free_space(){
     total_meta_data_bytes += INITIAL_BLOCKS_NUM*meta_data_size;
 
     first_smalloc = false; 
-    print_building();
     return addr;
 }
 
@@ -560,6 +559,7 @@ void* smalloc(size_t size){
         if(check_max_free_space() >= size){
 
             void* place = find_minimal_space(size);
+            print_building();
             return (void *)((uintptr_t)place+meta_data_size);
         }
         else {
@@ -597,7 +597,7 @@ void* smalloc(size_t size){
         return (void *)((uintptr_t)big_block_addr+meta_data_size);
         
     }
-    print_building();
+
 }
 
 
@@ -688,6 +688,7 @@ void *srealloc(void *oldp, size_t size) {
     }
 
     if (oldp == nullptr){
+        print_building();
         return (smalloc(size));
     }
 
@@ -698,6 +699,7 @@ void *srealloc(void *oldp, size_t size) {
 
         // reuses the same block 
         if(old_block->size == size){
+            print_building();
             return oldp;
         } 
 
@@ -710,6 +712,7 @@ void *srealloc(void *oldp, size_t size) {
         size_t size_to_move = (old_block->size < size)?old_block->size:size;
         memmove(new_block, oldp, size_to_move);
         sfree(oldp);
+        print_building();
         return new_block;
     }
 
@@ -723,13 +726,17 @@ void *srealloc(void *oldp, size_t size) {
         }
 
         if(size <= old_block->size){
+            print_building();
             return oldp;
         }
 
         // the block not big enough, trying to find his buddies until we be content
 
-        
+        std::cout << "block to realloc: " << old_block << " size = " << old_block->size+meta_data_size << std::endl;
+
         MallocMetadata *buddy = find_buddy(old_block);
+        std::cout << "his buddy: " << buddy << " size = " << buddy->size+meta_data_size << std::endl;
+
         int order = log2((old_block->size + meta_data_size)/MIN_BLOCK_SIZE);
 
         while(buddy && order <= MAX_ORDER-1){
@@ -737,7 +744,10 @@ void *srealloc(void *oldp, size_t size) {
             MallocMetadata *merged_block = merge_buddies(old_block, buddy, order+1);
 
             // merge block is big enough to overitten
-            if(merged_block->size >= old_block->size){
+            if(merged_block->size >= size){
+                std::cout << "found enough room" << std::endl;
+                std::cout << "merged block: " << merged_block << " size = " << merged_block->size+meta_data_size << std::endl;
+
                 remove_block_from_bin(buddy, order);
                 buddy->is_free = false;
                 memmove((void*)merged_block, oldp, old_block->size);
@@ -748,11 +758,14 @@ void *srealloc(void *oldp, size_t size) {
                 total_allocated_bytes +=meta_data_size;
                 total_meta_data_bytes -= meta_data_size;
 
+                
+                print_building();
                 return (void*)((uintptr_t)old_block + meta_data_size);
             }
 
             else{
                 // merge block not! big enough, insert him and keep trying
+                std::cout << "merge block not! big enough, insert him and keep trying" << std::endl;
 
                 remove_block_from_bin(buddy, order);
                 buddy->is_free = false;
