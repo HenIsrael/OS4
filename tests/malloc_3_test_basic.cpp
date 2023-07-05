@@ -106,55 +106,55 @@ TEST_CASE("Challenge 0 - Memory Utilization", "[malloc3]")
 {
     // Initial state
     verify_block_by_order(0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0);
-    std::cout << "verify before malloc OK !!!!!" << std::endl;
+    //std::cout << "verify before malloc OK !!!!!" << std::endl;
 
     // Allocate small block (order 0)
     void *ptr1 = smalloc(40);
     REQUIRE(ptr1 != nullptr);
-    std::cout << "malloc 1 OK !!!!!" << std::endl;
+    //std::cout << "malloc 1 OK !!!!!" << std::endl;
 //    verify_size(base);
     verify_block_by_order(1,1,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,31,0,0,0);
-    std::cout << "verify malloc 1 OK !!!!!" << std::endl;
+    //std::cout << "verify malloc 1 OK !!!!!" << std::endl;
 
     // Allocate large block (order 10)
     void *ptr2 = smalloc(MAX_ELEMENT_SIZE+100);
     REQUIRE(ptr2 != nullptr);
 
-    std::cout << "malloc 2 OK !!!!!" << std::endl;
+    //std::cout << "malloc 2 OK !!!!!" << std::endl;
 //    verify_size_with_large_blocks(base, (128 * 1024+100 +_size_meta_data()));
     verify_block_by_order(1,1,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,31,0,1,MAX_ELEMENT_SIZE+100);
-    std::cout << "verify malloc 2 OK !!!!!" << std::endl;
+    //std::cout << "verify malloc 2 OK !!!!!" << std::endl;
 
     // Allocate another small block
     void *ptr3 = smalloc(50);
     REQUIRE(ptr3 != nullptr);
 
-    std::cout << "malloc 3 OK !!!!!" << std::endl;
+    //std::cout << "malloc 3 OK !!!!!" << std::endl;
     verify_block_by_order(0,2,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,31,0,1,MAX_ELEMENT_SIZE+100);
-    std::cout << "verify malloc 3 OK !!!!!" << std::endl;
+    //std::cout << "verify malloc 3 OK !!!!!" << std::endl;
 
     // Free the first small block
     sfree(ptr1);
-    std::cout << "free 1 OK !!!!!" << std::endl;
+    //std::cout << "free 1 OK !!!!!" << std::endl;
     verify_block_by_order(1,1,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,31,0,1,MAX_ELEMENT_SIZE+100);
-    std::cout << "verify free 1 OK !!!!!" << std::endl;
+    //std::cout << "verify free 1 OK !!!!!" << std::endl;
 
 
     // Allocate another small block
     void *ptr4 = smalloc(40);
     REQUIRE(ptr4 != nullptr);
-    std::cout << "malloc 4 OK !!!!!" << std::endl;
+    //std::cout << "malloc 4 OK !!!!!" << std::endl;
     verify_block_by_order(0,2,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,31,0,1,MAX_ELEMENT_SIZE+100);
-    std::cout << "verify malloc 4 OK !!!!!" << std::endl;
+    //std::cout << "verify malloc 4 OK !!!!!" << std::endl;
     
 
     // Free all blocks
     sfree(ptr3);
-    std::cout << "free 3 OK !!!!!" << std::endl;
+    //std::cout << "free 3 OK !!!!!" << std::endl;
     sfree(ptr4);
-    std::cout << "free 4 OK !!!!!" << std::endl;
+    //std::cout << "free 4 OK !!!!!" << std::endl;
     verify_block_by_order(0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,32,0,1,MAX_ELEMENT_SIZE+100);
-    std::cout << "verify free 3 + 4 OK !!!!!" << std::endl;
+    //std::cout << "verify free 3 + 4 OK !!!!!" << std::endl;
     sfree(ptr1); //free again
     sfree(ptr2);
     verify_block_by_order(0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,32,0,0,0);
@@ -398,9 +398,11 @@ TEST_CASE("srealloc merges test", "[malloc3]")
 //    verify_block_by_order(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 32, 0, 0, 0);
 
     // Allocate a small block
+    std::cout << "Trying first malloc" << std::endl;
     void* ptr1 = smalloc(40);
     REQUIRE(ptr1 != nullptr);
     verify_block_by_order(1, 1, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 31, 0, 0, 0);
+    std::cout << "first malloc OK :)" << std::endl;
 
     // Reallocate to a larger size
     void* ptr2 = srealloc(ptr1, 128*pow(2,2) -64);

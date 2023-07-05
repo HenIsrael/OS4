@@ -19,9 +19,6 @@
 
 /**
  * \todo:
- * deal with challenge 4
- * finish writing sfree
- * check when to update global fields
  * write realloc
 */
 
@@ -234,12 +231,11 @@ static void* split_blocks(int order,size_t size){
 
 static MallocMetadata* find_buddy(MallocMetadata *block){
     
-    if(!block->is_free){
-        return nullptr;
-    }
+    // if(!block->is_free){
+    //     return nullptr;
+    // }
 
     void *potential_buddy_addr = (void*)((uintptr_t)block ^ (block->size+meta_data_size));
-    std::cout << "potential buddy addr" << potential_buddy_addr << std::endl;
 
     // check existence for buddy
     for(int order=0; order<MAX_ORDER+1; order++){
@@ -423,7 +419,7 @@ static void insert_block_to_bin(MallocMetadata* place, int order){
         if((uintptr_t)place < (uintptr_t)bins[order]){
 
             // place will be in the head
-            std::cout << "insert to lonly head" << std::endl;
+
             MallocMetadata* tmp = bins[order];
 
             bins[order] = place;
@@ -451,7 +447,7 @@ static void insert_block_to_bin(MallocMetadata* place, int order){
         if(!runner->next && (uintptr_t)place > (uintptr_t)runner)
         {
             //place will be in the tail
-            std::cout << "insert to tail" << std::endl;
+
             runner->next = place;
             place->prev = runner;
             place->next = nullptr;
@@ -462,7 +458,6 @@ static void insert_block_to_bin(MallocMetadata* place, int order){
         else if((uintptr_t)place < (uintptr_t)runner && !runner->prev){
             //insert place to the head
 
-            std::cout << "insert to the head" << std::endl;
             runner->prev = place;
             place->next = runner;
             place->prev = nullptr;
@@ -536,10 +531,7 @@ static size_t check_max_free_space(){
         }
 
         building.push_back(orderi_free_count);
-        
-
     }
-
 
     for (const auto& element : building) {
         std::cout << element << " ";
@@ -558,21 +550,16 @@ void* smalloc(size_t size){
         return nullptr;
     }
 
- 
-
     if(first_smalloc){
         if(!initialize_free_space()){
             return nullptr;
         }
     }
 
-    
-
     if(size < MAX_BLOCK_SIZE){
         if(check_max_free_space() >= size){
 
             void* place = find_minimal_space(size);
-            print_building();
             return (void *)((uintptr_t)place+meta_data_size);
         }
         else {
@@ -602,7 +589,6 @@ void* smalloc(size_t size){
         big_block->prev = nullptr; 
         big_block->size = size;
 
-
         total_allocated_blocks++;
         total_allocated_bytes += size; 
         total_meta_data_bytes += meta_data_size;
@@ -611,8 +597,7 @@ void* smalloc(size_t size){
         return (void *)((uintptr_t)big_block_addr+meta_data_size);
         
     }
-
-    
+    print_building();
 }
 
 
@@ -636,7 +621,6 @@ void sfree(void *p) {
     }
 
     MallocMetadata* block_let_it_go = (MallocMetadata*)((uintptr_t)p - (uintptr_t)meta_data_size);
-    std::cout << "now we trying to free block: " << block_let_it_go << std::endl;
 
     if(malicious_attack(block_let_it_go)){
         exit(0xdeadbeef);
@@ -644,7 +628,6 @@ void sfree(void *p) {
 
 
     if(block_let_it_go->is_free){
-        std::cout << "trying to free block that already free" << std::endl;
         return;
     }
 
@@ -661,10 +644,8 @@ void sfree(void *p) {
     else{// add free block(s) to “buddy memory”
 
         int order = log2((block_let_it_go->size + meta_data_size)/MIN_BLOCK_SIZE);
-        std::cout << "add the block to order: " << order << std::endl;
         insert_block_to_bin(block_let_it_go, order);
         block_let_it_go->is_free = true;
-        std::cout << "after insert block let it go: "<< std::endl;
         print_building();
 
         total_free_blocks++;
@@ -675,57 +656,121 @@ void sfree(void *p) {
 
         while(buddy && order <= MAX_ORDER-1){
 
-            std::cout << "we want merge buddies : " << std::endl;
-            std::cout << "buddy #1 : " << block_let_it_go << std::endl;
-            std::cout << "buddy #2 : " << buddy << std::endl;
-            std::cout << "in order : " << order <<  std::endl;
-            
-
             MallocMetadata *merged_block = merge_buddies(block_let_it_go, buddy, order+1);
-            
-            std::cout << " before removing buddies and insert merged block : "  <<  std::endl;
-            print_building();
-
+        
             remove_block_from_bin(block_let_it_go, order);
             block_let_it_go->is_free = false;
-            std::cout << "remove buddy #1 OK!!! : " << block_let_it_go << std::endl;
-            print_building();
 
             remove_block_from_bin(buddy, order);
             buddy->is_free = false;
-            std::cout << "remove buddy #2 OK!!! : " << buddy << std::endl;
-            print_building();
 
             insert_block_to_bin(merged_block, order+1);
             merged_block->is_free = true;
-            std::cout << "after insert merged block: "<< std::endl;
-            print_building();
-           
+
             total_free_blocks--;
             total_allocated_blocks--;
             total_allocated_bytes+=meta_data_size;
             total_meta_data_bytes -= meta_data_size;
             
-            std::cout << "merged block: " << merged_block << ", size = " << merged_block->size<<  std::endl;
-
             buddy = find_buddy(merged_block);
-            std::cout << "budyyyy: "<< buddy <<  std::endl;
-
             block_let_it_go = merged_block;
-            
-            
             order++;
-            
         }
 
     }
 
-    print_building();
-
 }
 
 void *srealloc(void *oldp, size_t size) {
-    return (void *)-1;
+
+    if (size == 0 || size > MAX_BLOCK_SIZE){
+        return nullptr;
+    }
+
+    if (oldp == nullptr){
+        return (smalloc(size));
+    }
+
+    MallocMetadata *old_block = (MallocMetadata*)((uintptr_t)oldp - (uintptr_t)meta_data_size);
+
+    // case big block realloc
+    if(size >= MAX_BLOCK_SIZE){
+
+        // reuses the same block 
+        if(old_block->size == size){
+            return oldp;
+        } 
+
+        // alocate new block
+        void *new_block = smalloc(size);
+        if(!new_block){
+            return nullptr;
+        }
+
+        size_t size_to_move = (old_block->size < size)?old_block->size:size;
+        memmove(new_block, oldp, size_to_move);
+        sfree(oldp);
+        return new_block;
+    }
+
+    else{ // standart case
+
+        // first, trying to use the same block without merging
+
+        if(old_block->is_free){
+            printf("WHAT THE FUCK!!!");
+            return (void*)-1;
+        }
+
+        if(size <= old_block->size){
+            return oldp;
+        }
+
+        // the block not big enough, trying to find his buddies until we be content
+
+        
+        MallocMetadata *buddy = find_buddy(old_block);
+        int order = log2((old_block->size + meta_data_size)/MIN_BLOCK_SIZE);
+
+        while(buddy && order <= MAX_ORDER-1){
+
+            MallocMetadata *merged_block = merge_buddies(old_block, buddy, order+1);
+
+            // merge block is big enough to overitten
+            if(merged_block->size >= old_block->size){
+                remove_block_from_bin(buddy, order);
+                buddy->is_free = false;
+                memmove((void*)merged_block, oldp, old_block->size);
+                merged_block->is_free = false;
+
+                total_free_blocks--;
+                total_allocated_blocks--;
+                total_allocated_bytes +=meta_data_size;
+                total_meta_data_bytes -= meta_data_size;
+
+                return (void*)((uintptr_t)old_block + meta_data_size);
+            }
+
+            else{
+                // merge block not! big enough, insert him and keep trying
+
+                remove_block_from_bin(buddy, order);
+                buddy->is_free = false;
+                insert_block_to_bin(merged_block, order+1);
+                merged_block->is_free = true;
+
+                buddy = find_buddy(merged_block);
+                old_block = merged_block;
+                order++;
+
+
+            }
+            
+        }
+    }
+
+    printf("HOW THE HELL WE DIDNT SUCCEDD TO DO THE REALLOC");
+    return nullptr;
 }
 
 size_t _num_free_blocks()
@@ -735,10 +780,10 @@ size_t _num_free_blocks()
 
 size_t _num_free_bytes()
 {
-    if(first_smalloc)
-    {
+    if(first_smalloc){
         return 0;
     }
+
     return total_free_bytes();
 }
 
