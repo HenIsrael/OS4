@@ -6,6 +6,9 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include <cstdio>
+#include <iostream>
+
 
 void performCorruption() {
     // Allocate memory
@@ -41,12 +44,17 @@ void performCorruption() {
 
 #define verify_blocks(allocated_blocks, allocated_bytes, free_blocks, free_bytes)                                      \
     do                                                                                                                 \
-    {                                                                                                                  \
+    {   std::cout << "enter to verify blocks" << std::endl;                                                                                                                \
         REQUIRE(_num_allocated_blocks() == allocated_blocks);                                                          \
+        std::cout << "require 1 OK" << std::endl; \
         REQUIRE(_num_allocated_bytes() == (allocated_bytes));                                              \
+        std::cout << "require 2 OK" << std::endl; \
         REQUIRE(_num_free_blocks() == free_blocks);                                                                    \
+        std::cout << "require 3 OK" << std::endl; \
         REQUIRE(_num_free_bytes() == (free_bytes));                                                        \
+        std::cout << "require 4 OK" << std::endl; \
         REQUIRE(_num_meta_data_bytes() == (_size_meta_data() * allocated_blocks));                         \
+        std::cout << "require 5 OK" << std::endl; \
     } while (0)
 
 #define verify_size(base)                                                                                              \
@@ -75,7 +83,8 @@ void verify_block_by_order(int order0free, int order0used, int order1free, int o
                                 int order10free,int  order10used,
                                 int big_blocks_count, long big_blocks_size  )\
                                                                                                                      \
-    {                                                                                                                  \
+    {                
+                                                                                                    \
         unsigned int __total_blocks = order0free + order0used+ order1free + order1used+ order2free + order2used+ order3free + order3used+ order4free + order4used+ order5free + order5used+ order6free + order6used+ order7free + order7used+ order8free + order8used+ order9free + order9used+ order10free + order10used + big_blocks_count       ;        \
         unsigned int __total_free_blocks = order0free+ order1free+ order2free+ order3free+ order4free+ order5free+ order6free+ order7free+ order8free+ order9free+ order10free ;                     \
         unsigned int __total_free_bytes_with_meta  = order0free*128*pow(2,0) +  order1free*128*pow(2,1) +  order2free*128*pow(2,2) +  order3free*128*pow(2,3) +  order4free*128*pow(2,4) +  order5free*128*pow(2,5) +  order6free*128*pow(2,6) +  order7free*128*pow(2,7) +  order8free*128*pow(2,8) +  order9free*128*pow(2,9)+  order10free*128*pow(2,10) ;                                                                     \
@@ -97,38 +106,55 @@ TEST_CASE("Challenge 0 - Memory Utilization", "[malloc3]")
 {
     // Initial state
     verify_block_by_order(0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0);
+    std::cout << "verify before malloc OK !!!!!" << std::endl;
 
     // Allocate small block (order 0)
     void *ptr1 = smalloc(40);
     REQUIRE(ptr1 != nullptr);
+    std::cout << "malloc 1 OK !!!!!" << std::endl;
 //    verify_size(base);
     verify_block_by_order(1,1,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,31,0,0,0);
+    std::cout << "verify malloc 1 OK !!!!!" << std::endl;
 
     // Allocate large block (order 10)
     void *ptr2 = smalloc(MAX_ELEMENT_SIZE+100);
     REQUIRE(ptr2 != nullptr);
+
+    std::cout << "malloc 2 OK !!!!!" << std::endl;
 //    verify_size_with_large_blocks(base, (128 * 1024+100 +_size_meta_data()));
     verify_block_by_order(1,1,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,31,0,1,MAX_ELEMENT_SIZE+100);
+    std::cout << "verify malloc 2 OK !!!!!" << std::endl;
 
     // Allocate another small block
     void *ptr3 = smalloc(50);
     REQUIRE(ptr3 != nullptr);
+
+    std::cout << "malloc 3 OK !!!!!" << std::endl;
     verify_block_by_order(0,2,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,31,0,1,MAX_ELEMENT_SIZE+100);
+    std::cout << "verify malloc 3 OK !!!!!" << std::endl;
 
     // Free the first small block
     sfree(ptr1);
+    std::cout << "free 1 OK !!!!!" << std::endl;
     verify_block_by_order(1,1,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,31,0,1,MAX_ELEMENT_SIZE+100);
+    std::cout << "verify free 1 OK !!!!!" << std::endl;
 
 
     // Allocate another small block
     void *ptr4 = smalloc(40);
     REQUIRE(ptr4 != nullptr);
+    std::cout << "malloc 4 OK !!!!!" << std::endl;
     verify_block_by_order(0,2,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,31,0,1,MAX_ELEMENT_SIZE+100);
+    std::cout << "verify malloc 4 OK !!!!!" << std::endl;
+    
 
     // Free all blocks
     sfree(ptr3);
+    std::cout << "free 3 OK !!!!!" << std::endl;
     sfree(ptr4);
+    std::cout << "free 4 OK !!!!!" << std::endl;
     verify_block_by_order(0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,32,0,1,MAX_ELEMENT_SIZE+100);
+    std::cout << "verify free 3 + 4 OK !!!!!" << std::endl;
     sfree(ptr1); //free again
     sfree(ptr2);
     verify_block_by_order(0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,32,0,0,0);

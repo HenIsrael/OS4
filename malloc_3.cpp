@@ -239,9 +239,14 @@ static MallocMetadata* find_buddy(MallocMetadata *block){
     }
 
     void *potential_buddy_addr = (void*)((uintptr_t)block ^ (block->size+meta_data_size));
+    std::cout << "potential buddy addr" << potential_buddy_addr << std::endl;
 
     // check existence for buddy
     for(int order=0; order<MAX_ORDER+1; order++){
+
+        if(!bins[order]){
+            continue;
+        }
 
         MallocMetadata *current = bins[order];
 
@@ -252,13 +257,14 @@ static MallocMetadata* find_buddy(MallocMetadata *block){
         while (current)
         {
             if(current == potential_buddy_addr){
+                
                 return current; // yes buddy :)
             }
             current = current->next;
         }
     
     }
-
+    
     return nullptr; // no buddy :(
 }
 
@@ -271,8 +277,8 @@ static MallocMetadata * merge_buddies(MallocMetadata *buddy1, MallocMetadata *bu
     }
     big_monster->size = buddy1->size + buddy2->size;
     big_monster->sweet_cookie = cookie_recipe;
-    big_monster->next = nullptr;
-    big_monster->prev = nullptr;
+    // big_monster->next = nullptr;
+    // big_monster->prev = nullptr;
 
     return big_monster;
 }
@@ -490,9 +496,10 @@ static size_t check_max_free_space(){
 
     for(int order=0; order<MAX_ORDER+1; order++){
 
-        // if(!bins[order]){
-        //     building.push_back(0);
-        // }
+        if(!bins[order]){
+            building.push_back(0);
+            continue;
+        }
         
 
         MallocMetadata *current = bins[order];
@@ -515,7 +522,6 @@ static size_t check_max_free_space(){
 
     }
 
-    std::cout << "free building blocks" << std::endl;
 
     for (const auto& element : building) {
         std::cout << element << " ";
@@ -548,6 +554,7 @@ void* smalloc(size_t size){
         if(check_max_free_space() >= size){
 
             void* place = find_minimal_space(size);
+            print_building();
             return (void *)((uintptr_t)place+meta_data_size);
         }
         else {
@@ -582,9 +589,12 @@ void* smalloc(size_t size){
         total_allocated_bytes += size; 
         total_meta_data_bytes += meta_data_size;
 
+        print_building();
         return (void *)((uintptr_t)big_block_addr+meta_data_size);
         
     }
+
+    
 }
 
 
@@ -608,7 +618,7 @@ void sfree(void *p) {
     }
 
     MallocMetadata* block_let_it_go = (MallocMetadata*)((uintptr_t)p - (uintptr_t)meta_data_size);
-    std::cout << "now if trying to free block: " << block_let_it_go << std::endl;
+    std::cout << "now we trying to free block: " << block_let_it_go << std::endl;
 
     if(malicious_attack(block_let_it_go)){
         exit(0xdeadbeef);
@@ -616,6 +626,7 @@ void sfree(void *p) {
 
 
     if(block_let_it_go->is_free){
+        std::cout << "trying to free block that already free" << std::endl;
         return;
     }
 
@@ -632,43 +643,68 @@ void sfree(void *p) {
     else{// add free block(s) to “buddy memory”
 
         int order = log2((block_let_it_go->size + meta_data_size)/MIN_BLOCK_SIZE);
+        std::cout << "add the block to order: " << order << std::endl;
         insert_block_to_bin(block_let_it_go, order);
-
         block_let_it_go->is_free = true;
-        
+        std::cout << "after insert block let it go: "<< std::endl;
+        print_building();
+
         total_free_blocks++;
   
 
         MallocMetadata *buddy = find_buddy(block_let_it_go);
 
+
         while(buddy && order <= MAX_ORDER-1){
 
+            std::cout << "we want merge buddies : " << std::endl;
+            std::cout << "buddy #1 : " << block_let_it_go << std::endl;
+            std::cout << "buddy #2 : " << buddy << std::endl;
+            std::cout << "in order : " << order <<  std::endl;
+            
+
             MallocMetadata *merged_block = merge_buddies(block_let_it_go, buddy);
+            
+            std::cout << "removing buddies and insert merged block : "  <<  std::endl;
+            print_building();
 
             remove_block_from_bin(block_let_it_go, order);
+            block_let_it_go->is_free = false;
+            std::cout << "remove buddy #1 OK!!! : " << block_let_it_go << std::endl;
+            print_building();
 
             remove_block_from_bin(buddy, order);
+            buddy->is_free = false;
+            std::cout << "remove buddy #2 OK!!! : " << buddy << std::endl;
+            print_building();
 
             insert_block_to_bin(merged_block, order+1);
-
-
             merged_block->is_free = true;
-
+            std::cout << "after insert merged block: "<< std::endl;
+            print_building();
+           
             total_free_blocks--;
             total_allocated_blocks--;
             total_allocated_bytes+=meta_data_size;
             total_meta_data_bytes -= meta_data_size;
             
-            block_let_it_go = merged_block;
-            buddy = find_buddy(block_let_it_go );
-            order++;
+            std::cout << "merged block: "<< merged_block << "size = " << merged_block->size<<  std::endl;
+            MallocMetadata *buddy_of_merged_block = bins[1]->next; 
+            std::cout << "buddy of merged block: "<< buddy_of_merged_block <<  std::endl;
+            buddy = find_buddy(merged_block);
+            std::cout << "budyyyy: "<< buddy <<  std::endl;
 
+            block_let_it_go = merged_block;
+            
+            
+            order++;
+            
         }
 
     }
 
     print_building();
-    
+
 }
 
 void *srealloc(void *oldp, size_t size) {
