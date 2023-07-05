@@ -398,14 +398,14 @@ TEST_CASE("srealloc merges test", "[malloc3]")
 //    verify_block_by_order(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 32, 0, 0, 0);
 
     // Allocate a small block
-    std::cout << "Trying first malloc" << std::endl;
+    std::cout << "Trying first malloc #1" << std::endl;
     void* ptr1 = smalloc(40);
     REQUIRE(ptr1 != nullptr);
     verify_block_by_order(1, 1, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 31, 0, 0, 0);
     std::cout << "first malloc OK :)" << std::endl;
 
     // Reallocate to a larger size
-    std::cout << "Trying realloc" << std::endl;
+    std::cout << "Trying realloc #2" << std::endl;
     void* ptr2 = srealloc(ptr1, 128*pow(2,2) -64);
     REQUIRE(ptr2 != nullptr);
     verify_block_by_order(0,0,0,0,1,1,1,0,1,0,1,0,1,0,1,0,1,0,1,0,31,0,0,0);
@@ -416,16 +416,21 @@ TEST_CASE("srealloc merges test", "[malloc3]")
     for (int i = 0; i < 10; i++) {
         newArr[i] = i + 1;
     }
-
+    
+    std::cout << "Trying realloc #3" << std::endl;
     // Reallocate to a larger size
     void* ptr3 = srealloc(ptr2, 100);
     REQUIRE(ptr3 != nullptr);
     REQUIRE(ptr2 == ptr3);
     verify_block_by_order(0,0,0,0,1,1,1,0,1,0,1,0,1,0,1,0,1,0,1,0,31,0,0,0);
+    std::cout << "realloc OK :)" << std::endl;
 
-
+    std::cout << "Trying realloc #4" << std::endl;
     void* ptr4 = srealloc(ptr3, 128*pow(2,8) -64);
     verify_block_by_order(0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,0,31,0,0,0);
+    std::cout << "realloc OK :)" << std::endl;
+
+
     int* newArr2 = static_cast<int*>(ptr4);
     for (int i = 0; i < 10; i++) {
         REQUIRE(newArr2[i] == i + 1);

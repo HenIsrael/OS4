@@ -731,30 +731,31 @@ void *srealloc(void *oldp, size_t size) {
         }
 
         // the block not big enough, trying to find his buddies until we be content
+        std::cout << "size to realloc = " << size << std::endl;
 
-        std::cout << "block to realloc: " << old_block << " size = " << old_block->size+meta_data_size << std::endl;
+        std::cout << "old block to realloc: " << old_block << ", size = " << old_block->size << std::endl;
 
         MallocMetadata *buddy = find_buddy(old_block);
-        std::cout << "his buddy: " << buddy << " size = " << buddy->size+meta_data_size << std::endl;
+        std::cout << "his buddy: " << buddy << ", size = " << buddy->size << std::endl;
 
         int order = log2((old_block->size + meta_data_size)/MIN_BLOCK_SIZE);
 
         while(buddy && order <= MAX_ORDER-1){
 
             MallocMetadata *merged_block = merge_buddies(old_block, buddy, order+1);
+            std::cout << "merged block: " << merged_block << ", size = " << merged_block->size << std::endl;
 
             // merge block is big enough to overitten
             if(merged_block->size >= size){
                 std::cout << "found enough room" << std::endl;
-                std::cout << "merged block: " << merged_block << " size = " << merged_block->size+meta_data_size << std::endl;
-
+                
                 remove_block_from_bin(buddy, order);
                 buddy->is_free = false;
-                memmove((void*)merged_block, oldp, old_block->size);
+                memmove((void*)merged_block, old_block, size);
                 merged_block->is_free = false;
 
-                total_free_blocks--;
-                total_allocated_blocks--;
+                total_free_blocks --;
+                total_allocated_blocks --;
                 total_allocated_bytes +=meta_data_size;
                 total_meta_data_bytes -= meta_data_size;
 
@@ -764,18 +765,22 @@ void *srealloc(void *oldp, size_t size) {
             }
 
             else{
-                // merge block not! big enough, insert him and keep trying
-                std::cout << "merge block not! big enough, insert him and keep trying" << std::endl;
+                // merge block not big enough, keep trying
+                std::cout << "merge block not big enough" << std::endl;
 
                 remove_block_from_bin(buddy, order);
-                buddy->is_free = false;
-                insert_block_to_bin(merged_block, order+1);
-                merged_block->is_free = true;
+                print_building();
+
+                total_free_blocks --;
+                total_allocated_blocks --;
+                total_allocated_bytes +=meta_data_size;
+                total_meta_data_bytes -= meta_data_size;
+
 
                 buddy = find_buddy(merged_block);
                 old_block = merged_block;
                 order++;
-
+        
 
             }
             
